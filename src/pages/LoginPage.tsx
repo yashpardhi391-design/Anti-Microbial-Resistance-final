@@ -21,6 +21,7 @@ import {
   Linkedin,
   Chrome,
   Phone,
+  X,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { BloodGroup, UserRole } from "../types";
@@ -77,6 +78,92 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
   const [isRegisterActive, setIsRegisterActive] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // Forgot Password Modal State
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotFullName, setForgotFullName] = useState("");
+  const [forgotMessage, setForgotMessage] = useState("");
+  const [forgotError, setForgotError] = useState("");
+  const [recoveredPassword, setRecoveredPassword] = useState("");
+
+  const handleForgotPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError("");
+    setForgotMessage("");
+    setRecoveredPassword("");
+
+    const emailInput = forgotEmail.toLowerCase().trim();
+    const nameInput = forgotFullName.toLowerCase().trim();
+
+    if (!emailInput || !nameInput) {
+      setForgotError("Please enter both username/email and full name.");
+      return;
+    }
+
+    // 1. Check if it matches a Demo account (so users can easily retrieve demo credentials)
+    if (
+      emailInput.includes("dr.vance") || 
+      emailInput.includes("vance") || 
+      nameInput.includes("vance")
+    ) {
+      setRecoveredPassword("DocPass@2026");
+      setForgotMessage("Demo credentials recovered successfully!");
+      return;
+    }
+    if (
+      emailInput.includes("admin") || 
+      nameInput.includes("alok") || 
+      nameInput.includes("admin")
+    ) {
+      setRecoveredPassword("AdminPass@2026");
+      setForgotMessage("Demo credentials recovered successfully!");
+      return;
+    }
+    if (
+      emailInput.includes("rajesh") || 
+      nameInput.includes("rajesh")
+    ) {
+      setRecoveredPassword("PatPass@2026");
+      setForgotMessage("Demo credentials recovered successfully!");
+      return;
+    }
+    if (
+      emailInput.includes("pooja") || 
+      nameInput.includes("pooja")
+    ) {
+      setRecoveredPassword("StaffPass@2026");
+      setForgotMessage("Demo credentials recovered successfully!");
+      return;
+    }
+
+    // 2. Search local users
+    try {
+      const stored = localStorage.getItem("pharmashield_local_users");
+      if (stored) {
+        const localUsers: Array<{ email: string; password?: string; profile: any }> = JSON.parse(stored);
+        const match = localUsers.find(
+          (u) => 
+            u.email.toLowerCase().trim() === emailInput &&
+            u.profile?.fullName?.toLowerCase().trim().includes(nameInput)
+        );
+
+        if (match) {
+          if (match.password) {
+            setRecoveredPassword(match.password);
+            setForgotMessage("Account recovered! Your security password is:");
+          } else {
+            setForgotError("This account was created without a password or is synced only with Firebase.");
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    setForgotError("No matching account found with those credentials. Please check your spelling.");
+  };
 
   // Doctor Form
   const [docUsername, setDocUsername] = useState("");
@@ -447,9 +534,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
             {renderRoleSelector(role, setRole)}
 
             {errorMsg && (
-              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMsg}</span>
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs flex flex-col space-y-2">
+                <div className="flex items-center space-x-2">
+                  <AlertCircle className="w-4.5 h-4.5 shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+                {errorMsg.includes("already registered") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRegisterActive(false);
+                      setErrorMsg("");
+                    }}
+                    className="mt-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg text-[10px] text-center transition-all cursor-pointer font-mono shadow-xs"
+                  >
+                    Switch to Sign-In Page &rarr;
+                  </button>
+                )}
               </div>
             )}
 
@@ -638,14 +739,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
                   <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
                     Security Password
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="text-[10px] text-teal-600 dark:text-teal-400 hover:underline flex items-center space-x-1 cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                    <span>{showPassword ? "Hide" : "Show"}</span>
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-[10px] text-teal-600 dark:text-teal-400 hover:underline flex items-center space-x-1 cursor-pointer font-bold"
+                    >
+                      {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      <span>{showPassword ? "Hide" : "Show"}</span>
+                    </button>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotError("");
+                        setForgotMessage("");
+                        setRecoveredPassword("");
+                        setForgotEmail(
+                          role === "doctor" ? docUsername : role === "admin" ? adminUsername : role === "patient" ? patUsername : staffUsername
+                        );
+                        setIsForgotPasswordOpen(true);
+                      }}
+                      className="text-[10px] text-rose-500 hover:text-rose-600 hover:underline cursor-pointer font-bold"
+                    >
+                      Forgot?
+                    </button>
+                  </div>
                 </div>
                 <div className="relative">
                   <Lock className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
@@ -754,9 +873,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
           {renderRoleSelector(role, setRole)}
 
           {errorMsg && (
-            <div className="p-3 mb-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs flex items-center space-x-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
+            <div className="p-3 mb-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs flex flex-col space-y-2">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+              {errorMsg.includes("already registered") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRegisterActive(false);
+                    setErrorMsg("");
+                  }}
+                  className="mt-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg text-[10px] text-center transition-all cursor-pointer font-mono shadow-xs"
+                >
+                  Switch to Sign-In Page &rarr;
+                </button>
+              )}
             </div>
           )}
 
@@ -812,14 +945,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                   Password
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="text-[10px] text-teal-600 dark:text-teal-400 hover:underline flex items-center space-x-1 cursor-pointer"
-                >
-                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  <span>{showPassword ? "Hide" : "Show"}</span>
-                </button>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-[10px] text-teal-600 dark:text-teal-400 hover:underline flex items-center space-x-1 cursor-pointer font-bold"
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{showPassword ? "Hide" : "Show"}</span>
+                  </button>
+                  <span className="text-slate-300 dark:text-slate-700">|</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotError("");
+                      setForgotMessage("");
+                      setRecoveredPassword("");
+                      setForgotEmail(
+                        role === "doctor" ? docUsername : role === "admin" ? adminUsername : role === "patient" ? patUsername : staffUsername
+                      );
+                      setIsForgotPasswordOpen(true);
+                    }}
+                    className="text-[10px] text-rose-500 hover:text-rose-600 hover:underline cursor-pointer font-bold"
+                  >
+                    Forgot?
+                  </button>
+                </div>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
@@ -952,6 +1103,172 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
           </button>
         </div>
       </div>
+
+      {/* PROJECT CREATORS & PRESENTERS SECTION */}
+      <div className="mt-8 mb-12 w-full max-w-4xl bg-slate-50/80 dark:bg-slate-950/40 border border-slate-200/60 dark:border-slate-800/60 rounded-3xl p-6 shadow-lg text-center">
+        <div className="flex items-center justify-center space-x-2 mb-5">
+          <div className="h-px bg-slate-200 dark:bg-slate-800 flex-1" />
+          <span className="text-xs font-black tracking-wider text-slate-400 dark:text-slate-500 uppercase font-mono px-3">
+            Project Developers & Presenters / परियोजना विकास दल
+          </span>
+          <div className="h-px bg-slate-200 dark:bg-slate-800 flex-1" />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+          {/* Yash Pardhi */}
+          <div className="flex items-center space-x-4 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-xs hover:border-teal-500/40 transition-all group">
+            <div className="shrink-0 relative">
+              <img
+                src="/yash_photo.jpg"
+                alt="Yash Pardhi"
+                referrerPolicy="no-referrer"
+                className="w-20 h-26 object-cover object-center rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm aspect-[3/4]"
+              />
+              <span className="absolute -bottom-1.5 -right-1.5 px-2 py-0.5 bg-teal-600 text-white font-mono text-[8px] font-black rounded-full uppercase tracking-tight shadow-xs">
+                Coder
+              </span>
+            </div>
+            <div className="text-left space-y-1">
+              <h5 className="text-xs font-black text-slate-900 dark:text-white group-hover:text-teal-600 transition-colors">
+                Yash Pardhi
+              </h5>
+              <p className="text-[10px] text-teal-600 dark:text-teal-400 font-bold font-mono">
+                Lead Developer & Website Architect
+              </p>
+              <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-relaxed font-sans">
+                Full coding, logic, UI architecture and complete system development.
+              </p>
+            </div>
+          </div>
+
+          {/* Mohammad Muaaj Mansuri */}
+          <div className="flex items-center space-x-4 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-xs hover:border-teal-500/40 transition-all group">
+            <div className="shrink-0 relative">
+              <img
+                src="/muaaj_photo.jpg"
+                alt="Mohammad Muaaj Mansuri"
+                referrerPolicy="no-referrer"
+                className="w-20 h-26 object-cover object-center rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm aspect-[3/4]"
+              />
+              <span className="absolute -bottom-1.5 -right-1.5 px-2 py-0.5 bg-slate-500 text-white font-mono text-[8px] font-black rounded-full uppercase tracking-tight shadow-xs">
+                Presenter
+              </span>
+            </div>
+            <div className="text-left space-y-1">
+              <h5 className="text-xs font-black text-slate-900 dark:text-white group-hover:text-slate-300 transition-colors">
+                Mohammad Muaaj Mansuri
+              </h5>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold font-mono">
+                Project Presenter & Introducer
+              </p>
+              <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-relaxed font-sans">
+                Introduces, pitches, and defines the presentation goals for our team.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Forgot Password Recovery Modal */}
+      {isForgotPasswordOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-md p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl space-y-4">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="p-2 bg-rose-50 dark:bg-rose-950/40 rounded-xl text-rose-600 dark:text-rose-400">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">Recover Security Password</h3>
+                  <p className="text-[10px] text-slate-400">Enter verification info to retrieve key</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsForgotPasswordOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <hr className="border-slate-100 dark:border-slate-800" />
+
+            {/* Error or Success alerts */}
+            {forgotError && (
+              <div className="p-3 text-xs bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 rounded-xl border border-rose-200/50 dark:border-rose-900/40 font-semibold">
+                {forgotError}
+              </div>
+            )}
+            {forgotMessage && (
+              <div className="p-3 text-xs bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-xl border border-emerald-200/50 dark:border-emerald-900/40 space-y-2">
+                <div className="font-semibold">{forgotMessage}</div>
+                {recoveredPassword && (
+                  <div className="p-2.5 font-mono text-center text-sm font-black tracking-wider bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-800 select-all cursor-pointer" title="Double click to select">
+                    {recoveredPassword}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleForgotPassword} className="space-y-3 text-left">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                  Credential Username / Registered Email
+                </label>
+                <div className="relative">
+                  <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. yashpardhi391@gmail.com or dr.vance"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-rose-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                  Registered Full Name (For verification)
+                </label>
+                <div className="relative">
+                  <User className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Yash pardhi or Dr. Vance"
+                    value={forgotFullName}
+                    onChange={(e) => setForgotFullName(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-rose-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsForgotPasswordOpen(false)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs cursor-pointer text-center"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs cursor-pointer text-center shadow-md"
+                >
+                  Retrieve Password
+                </button>
+              </div>
+            </form>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );
