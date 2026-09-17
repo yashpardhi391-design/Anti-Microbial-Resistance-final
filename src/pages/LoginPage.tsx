@@ -26,6 +26,8 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { BloodGroup, UserRole } from "../types";
 import { useNavigate } from "react-router-dom";
+import yashPhoto from "../assets/yash_photo.jpg";
+import muaajPhoto from "../assets/muaaj_photo.jpg";
 
 const getFriendlyErrorMessage = (error: any): string => {
   if (!error) return "Authentication failed.";
@@ -1119,7 +1121,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
           <div className="flex items-center space-x-4 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-xs hover:border-teal-500/40 transition-all group">
             <div className="shrink-0 relative">
               <img
-                src="/yash_photo.jpg"
+                src={yashPhoto}
                 alt="Yash Pardhi"
                 referrerPolicy="no-referrer"
                 className="w-20 h-26 object-cover object-center rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm aspect-[3/4]"
@@ -1145,7 +1147,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
           <div className="flex items-center space-x-4 p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-xs hover:border-teal-500/40 transition-all group">
             <div className="shrink-0 relative">
               <img
-                src="/muaaj_photo.jpg"
+                src={muaajPhoto}
                 alt="Mohammad Muaaj Mansuri"
                 referrerPolicy="no-referrer"
                 className="w-20 h-26 object-cover object-center rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm aspect-[3/4]"
