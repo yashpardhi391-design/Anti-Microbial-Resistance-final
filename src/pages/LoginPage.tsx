@@ -26,6 +26,33 @@ import { useAuth } from "../context/AuthContext";
 import { BloodGroup, UserRole } from "../types";
 import { useNavigate } from "react-router-dom";
 
+const getFriendlyErrorMessage = (error: any): string => {
+  if (!error) return "Authentication failed.";
+  const msg = error.message || String(error);
+  if (msg.includes("auth/operation-not-allowed") || msg.includes("operation-not-allowed")) {
+    return "Firebase Error: 'Email/Password' authentication is disabled. To fix this instantly, go to: Firebase Console > Build > Authentication > Sign-in method > Enable 'Email/Password' & Save.";
+  }
+  if (msg.includes("auth/email-already-in-use") || msg.includes("email-already-in-use")) {
+    return "This email is already registered. Please sign in instead.";
+  }
+  if (msg.includes("auth/weak-password") || msg.includes("weak-password")) {
+    return "Password is too weak. Please use at least 6 characters.";
+  }
+  if (msg.includes("auth/invalid-email") || msg.includes("invalid-email")) {
+    return "Please enter a valid email address.";
+  }
+  if (
+    msg.includes("auth/user-not-found") ||
+    msg.includes("user-not-found") ||
+    msg.includes("auth/wrong-password") ||
+    msg.includes("wrong-password") ||
+    msg.includes("invalid-credential")
+  ) {
+    return "Invalid email or password. Please verify your credentials.";
+  }
+  return msg;
+};
+
 interface LoginPageProps {
   isStandaloneGate?: boolean;
 }
@@ -40,6 +67,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
     loginAsUser,
     loginCustom,
     logout,
+    firebaseSignIn,
+    firebaseSignUp,
   } = useAuth();
 
   const navigate = useNavigate();
@@ -50,32 +79,57 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
   const [errorMsg, setErrorMsg] = useState("");
 
   // Doctor Form
-  const [docUsername, setDocUsername] = useState("dr.vance@aiims-amr.org");
-  const [docPassword, setDocPassword] = useState("DocPass@2026");
-  const [docLicense, setDocLicense] = useState("MCI-ND-2016-84920");
-  const [docHospital, setDocHospital] = useState("AIIMS Apex Antimicrobial Center");
+  const [docUsername, setDocUsername] = useState("");
+  const [docPassword, setDocPassword] = useState("");
+  const [docLicense, setDocLicense] = useState("");
+  const [docHospital, setDocHospital] = useState("");
   const [docName, setDocName] = useState("");
 
   // Admin Form
-  const [adminUsername, setAdminUsername] = useState("ADMIN-ICMR-NCR-8801");
-  const [adminPassword, setAdminPassword] = useState("AdminPass@2026");
-  const [adminEmail, setAdminEmail] = useState("admin.director@aiims-amr.org");
+  const [adminUsername, setAdminUsername] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
   const [adminName, setAdminName] = useState("");
 
   // Patient Form
-  const [patUsername, setPatUsername] = useState("UHID-2026-P204119");
-  const [patPassword, setPatPassword] = useState("PatPass@2026");
-  const [patPhone, setPatPhone] = useState("+91 94120 58392");
+  const [patUsername, setPatUsername] = useState("");
+  const [patPassword, setPatPassword] = useState("");
+  const [patPhone, setPatPhone] = useState("");
   const [patName, setPatName] = useState("");
   const [patBloodGroup, setPatBloodGroup] = useState<BloodGroup>("O+");
-  const [patReportCode, setPatReportCode] = useState("PRP-2041-1092-8801");
+  const [patReportCode, setPatReportCode] = useState("");
 
   // Staff Form
-  const [staffUsername, setStaffUsername] = useState("STF-LAB-4029");
-  const [staffPassword, setStaffPassword] = useState("StaffPass@2026");
-  const [staffEmail, setStaffEmail] = useState("pooja.nair@aiims-amr.org");
+  const [staffUsername, setStaffUsername] = useState("");
+  const [staffPassword, setStaffPassword] = useState("");
+  const [staffEmail, setStaffEmail] = useState("");
   const [staffName, setStaffName] = useState("");
-  const [staffBranch, setStaffBranch] = useState("Central Bacteriology Wing");
+  const [staffBranch, setStaffBranch] = useState("");
+
+  // Helper to fill demo credentials into the input fields
+  const handleAutoFillFields = () => {
+    setErrorMsg("");
+    if (role === "doctor") {
+      setDocUsername("dr.vance@aiims-amr.org");
+      setDocPassword("DocPass@2026");
+      setDocLicense("MCI-ND-2016-84920");
+      setDocHospital("AIIMS Apex Antimicrobial Center");
+    } else if (role === "admin") {
+      setAdminUsername("ADMIN-ICMR-NCR-8801");
+      setAdminPassword("AdminPass@2026");
+      setAdminEmail("admin.director@aiims-amr.org");
+    } else if (role === "patient") {
+      setPatUsername("UHID-2026-P204119");
+      setPatPassword("PatPass@2026");
+      setPatPhone("+91 94120 58392");
+      setPatReportCode("PRP-2041-1092-8801");
+    } else {
+      setStaffUsername("STF-LAB-4029");
+      setStaffPassword("StaffPass@2026");
+      setStaffEmail("pooja.nair@aiims-amr.org");
+      setStaffBranch("Central Bacteriology Wing");
+    }
+  };
 
   // Quick Demo Auto-Fill & Login
   const handleQuickDemoLogin = (selectedRole: UserRole) => {
@@ -105,9 +159,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
   };
 
   // Submit Handler
-  const handleSubmit = (e: React.FormEvent, isRegisterForm: boolean) => {
+  const handleSubmit = async (e: React.FormEvent, isRegisterForm: boolean) => {
     e.preventDefault();
     setErrorMsg("");
+
+    const getFirebaseEmail = (input: string, userRole: string) => {
+      const trimmed = input.trim();
+      if (trimmed.includes("@")) return trimmed;
+      return `${trimmed.toLowerCase()}@${userRole}-portal.org`;
+    };
 
     if (role === "doctor") {
       if (!docUsername.trim()) {
@@ -118,121 +178,157 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
         setErrorMsg("Please enter password");
         return;
       }
-      if (!isRegisterForm) {
-        loginAsDoctor(docUsername, docLicense);
-        navigate("/");
-      } else {
-        if (!docName.trim()) {
-          setErrorMsg("Please enter Doctor Name");
-          return;
+      try {
+        if (!isRegisterForm) {
+          // Check if it's the demo credentials
+          if (docUsername === "dr.vance@aiims-amr.org" && docPassword === "DocPass@2026") {
+            loginAsDoctor(docUsername, docLicense);
+          } else {
+            const resolvedEmail = getFirebaseEmail(docUsername, "doctor");
+            await firebaseSignIn(resolvedEmail, docPassword);
+          }
+          navigate("/");
+        } else {
+          if (!docName.trim()) {
+            setErrorMsg("Please enter Doctor Name");
+            return;
+          }
+          const resolvedEmail = getFirebaseEmail(docUsername, "doctor");
+          await firebaseSignUp(resolvedEmail, docPassword, {
+            role: "doctor",
+            name: docName.startsWith("Dr.") ? docName : `Dr. ${docName}`,
+            email: resolvedEmail,
+            medicalLicenseNo: docLicense || "MCI-REG-PENDING",
+            hospitalName: docHospital || "AIIMS Apex Antimicrobial Center",
+            department: "Infectious Diseases & Clinical Stewardship",
+            designation: "Attending Consultant / Stewardship Officer",
+            isVerified: true,
+          });
+          navigate("/");
         }
-        loginCustom({
-          id: `DOC-${Math.floor(1000 + Math.random() * 9000)}`,
-          role: "doctor",
-          name: docName.startsWith("Dr.") ? docName : `Dr. ${docName}`,
-          email: docUsername,
-          medicalLicenseNo: docLicense || "MCI-REG-PENDING",
-          hospitalName: docHospital,
-          department: "Infectious Diseases & Clinical Stewardship",
-          designation: "Attending Consultant / Stewardship Officer",
-          isVerified: true,
-          twoFactorEnabled: true,
-        });
-        navigate("/");
+      } catch (err: any) {
+        console.error("Doctor Auth Error:", err);
+        setErrorMsg(getFriendlyErrorMessage(err));
       }
     } else if (role === "admin") {
       if (!adminUsername.trim()) {
-        setErrorMsg("Please enter Admin ID");
+        setErrorMsg("Please enter Admin ID / Email");
         return;
       }
       if (!adminPassword.trim()) {
         setErrorMsg("Please enter password");
         return;
       }
-      if (!isRegisterForm) {
-        loginAsAdmin(adminUsername, adminEmail);
-        navigate("/admin");
-      } else {
-        if (!adminName.trim()) {
-          setErrorMsg("Please enter Admin Name");
-          return;
+      try {
+        const resolvedEmail = getFirebaseEmail(adminEmail || adminUsername, "admin");
+        if (!isRegisterForm) {
+          if ((adminUsername === "ADMIN-ICMR-NCR-8801" || adminEmail === "admin.director@aiims-amr.org") && adminPassword === "AdminPass@2026") {
+            loginAsAdmin(adminUsername, adminEmail);
+          } else {
+            await firebaseSignIn(resolvedEmail, adminPassword);
+          }
+          navigate("/admin");
+        } else {
+          if (!adminName.trim()) {
+            setErrorMsg("Please enter Admin Name");
+            return;
+          }
+          await firebaseSignUp(resolvedEmail, adminPassword, {
+            role: "admin",
+            name: adminName,
+            email: resolvedEmail,
+            adminId: adminUsername,
+            securityClearance: "Level 4 (Directorate Governance)",
+            hospitalName: "AIIMS Apex Antimicrobial Governance Directorate",
+            isVerified: true,
+          });
+          navigate("/admin");
         }
-        loginCustom({
-          id: `ADM-${Math.floor(1000 + Math.random() * 9000)}`,
-          role: "admin",
-          name: adminName,
-          email: adminEmail,
-          adminId: adminUsername,
-          securityClearance: "Level 4 (Directorate Governance)",
-          hospitalName: "AIIMS Apex Antimicrobial Governance Directorate",
-          isVerified: true,
-          twoFactorEnabled: true,
-        });
-        navigate("/admin");
+      } catch (err: any) {
+        console.error("Admin Auth Error:", err);
+        setErrorMsg(getFriendlyErrorMessage(err));
       }
     } else if (role === "patient") {
       if (!patUsername.trim()) {
-        setErrorMsg("Please enter Patient UHID");
+        setErrorMsg("Please enter Patient UHID / Email");
         return;
       }
       if (!patPassword.trim()) {
         setErrorMsg("Please enter password");
         return;
       }
-      if (!isRegisterForm) {
-        loginAsPatient(patUsername, patReportCode);
-        navigate("/patient-portal");
-      } else {
-        if (!patName.trim()) {
-          setErrorMsg("Please enter Patient Name");
-          return;
+      try {
+        const resolvedEmail = getFirebaseEmail(patUsername, "patient");
+        if (!isRegisterForm) {
+          if (patUsername === "UHID-2026-P204119" && patPassword === "PatPass@2026") {
+            loginAsPatient(patUsername, patReportCode);
+          } else {
+            await firebaseSignIn(resolvedEmail, patPassword);
+          }
+          navigate("/patient-portal");
+        } else {
+          if (!patName.trim()) {
+            setErrorMsg("Please enter Patient Name");
+            return;
+          }
+          await firebaseSignUp(resolvedEmail, patPassword, {
+            role: "patient",
+            name: patName,
+            email: resolvedEmail,
+            phone: patPhone || "+91 94120 58392",
+            uhid: patUsername,
+            bloodGroup: patBloodGroup,
+            associatedReportCode: patReportCode || "PRP-2041-1092-8801",
+            wardOrBed: "General Medical Ward - Bed 08",
+            isVerified: true,
+          });
+          navigate("/patient-portal");
         }
-        loginCustom({
-          id: `PAT-${Math.floor(1000 + Math.random() * 9000)}`,
-          role: "patient",
-          name: patName,
-          email: `${patName.toLowerCase().replace(/\s+/g, ".")}@patient-portal.org`,
-          phone: patPhone,
-          uhid: patUsername,
-          bloodGroup: patBloodGroup,
-          associatedReportCode: patReportCode || "PRP-2041-1092-8801",
-          wardOrBed: "General Medical Ward - Bed 08",
-          isVerified: true,
-        });
-        navigate("/patient-portal");
+      } catch (err: any) {
+        console.error("Patient Auth Error:", err);
+        setErrorMsg(getFriendlyErrorMessage(err));
       }
     } else if (role === "user") {
       if (!staffUsername.trim()) {
-        setErrorMsg("Please enter Staff ID");
+        setErrorMsg("Please enter Staff ID / Email");
         return;
       }
       if (!staffPassword.trim()) {
         setErrorMsg("Please enter password");
         return;
       }
-      if (!isRegisterForm) {
-        loginAsUser(staffUsername, staffEmail);
-        navigate("/scanner");
-      } else {
-        if (!staffName.trim()) {
-          setErrorMsg("Please enter Staff Name");
-          return;
+      try {
+        const resolvedEmail = getFirebaseEmail(staffEmail || staffUsername, "staff");
+        if (!isRegisterForm) {
+          if ((staffUsername === "STF-LAB-4029" || staffEmail === "pooja.nair@aiims-amr.org") && staffPassword === "StaffPass@2026") {
+            loginAsUser(staffUsername, staffEmail);
+          } else {
+            await firebaseSignIn(resolvedEmail, staffPassword);
+          }
+          navigate("/scanner");
+        } else {
+          if (!staffName.trim()) {
+            setErrorMsg("Please enter Staff Name");
+            return;
+          }
+          await firebaseSignUp(resolvedEmail, staffPassword, {
+            role: "user",
+            name: staffName,
+            email: resolvedEmail,
+            staffId: staffUsername,
+            staffRole: "Senior Lab Microbiologist",
+            laboratoryBranch: staffBranch || "Central Bacteriology Wing",
+            isVerified: true,
+          });
+          navigate("/scanner");
         }
-        loginCustom({
-          id: `STF-${Math.floor(1000 + Math.random() * 9000)}`,
-          role: "user",
-          name: staffName,
-          email: staffEmail,
-          staffId: staffUsername,
-          staffRole: "Senior Lab Microbiologist",
-          laboratoryBranch: staffBranch,
-          isVerified: true,
-          twoFactorEnabled: true,
-        });
-        navigate("/scanner");
+      } catch (err: any) {
+        console.error("Staff Auth Error:", err);
+        setErrorMsg(getFriendlyErrorMessage(err));
       }
     }
   };
+
 
   // Shared Form elements like Role selector tabs to render on either signin or signup forms
   const renderRoleSelector = (currentRole: UserRole, onChange: (r: UserRole) => void) => {
@@ -569,14 +665,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
                 </div>
               </div>
 
-              <button
-                type="submit"
-                className="w-full py-3 px-4 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-2 shadow-md cursor-pointer transition-colors"
-              >
-                <KeyRound className="w-4 h-4" />
-                <span>Verify & Sign-In</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={handleAutoFillFields}
+                  className="px-4 py-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs cursor-pointer transition-colors"
+                  title="Fill fields with standard demo credentials"
+                >
+                  Auto-Fill Demo
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 px-4 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-2 shadow-md cursor-pointer transition-colors"
+                >
+                  <KeyRound className="w-4 h-4" />
+                  <span>Verify & Sign-In</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </form>
 
             <div className="text-center pt-2">
@@ -591,23 +697,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
           
           {/* Active register form trigger */}
           <div className="login-toggle-panel toggle-left px-10 text-center">
-            <h1 className="text-3xl font-black mb-2">Hello, Friend!</h1>
-            <p className="text-xs text-slate-100/90 mb-6 max-w-xs">
-              Already configured your credentials? Skip registration and log in directly to continue.
-            </p>
-            <button
-              onClick={() => {
-                setIsRegisterActive(false);
-                setErrorMsg("");
-              }}
-              className="px-6 py-2 rounded-xl bg-transparent border-2 border-white hover:bg-white/10 text-white text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95"
-            >
-              Sign In Instead
-            </button>
-          </div>
-
-          {/* Active signin form trigger */}
-          <div className="login-toggle-panel toggle-right px-10 text-center">
             <h1 className="text-3xl font-black mb-2">New Here?</h1>
             <p className="text-xs text-slate-100/90 mb-6 max-w-xs">
               Join our hospital surveillance grid to upload, scan, and cross-analyze local patient antibiograms instantly.
@@ -620,6 +709,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
               className="px-6 py-2 rounded-xl bg-transparent border-2 border-white hover:bg-white/10 text-white text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95"
             >
               Create Account
+            </button>
+          </div>
+
+          {/* Active signin form trigger */}
+          <div className="login-toggle-panel toggle-right px-10 text-center">
+            <h1 className="text-3xl font-black mb-2">Hello, Friend!</h1>
+            <p className="text-xs text-slate-100/90 mb-6 max-w-xs">
+              Already configured your credentials? Skip registration and log in directly to continue.
+            </p>
+            <button
+              onClick={() => {
+                setIsRegisterActive(false);
+                setErrorMsg("");
+              }}
+              className="px-6 py-2 rounded-xl bg-transparent border-2 border-white hover:bg-white/10 text-white text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95"
+            >
+              Sign In Instead
             </button>
           </div>
 
@@ -748,13 +854,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
               </span>
             </div>
 
-            <button
-              type="submit"
-              className="w-full py-3 px-4 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-2 shadow-md cursor-pointer transition-colors"
-            >
-              <KeyRound className="w-4 h-4" />
-              <span>{isRegisterActive ? "Register & Sign-In" : "Verify & Sign-In"}</span>
-            </button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={handleAutoFillFields}
+                className="px-4 py-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs cursor-pointer transition-colors"
+                title="Fill fields with standard demo credentials"
+              >
+                Auto-Fill Demo
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-3 px-4 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-2 shadow-md cursor-pointer transition-colors"
+              >
+                <KeyRound className="w-4 h-4" />
+                <span>{isRegisterActive ? "Register & Enter" : "Verify & Sign-In"}</span>
+              </button>
+            </div>
           </form>
 
           <div className="text-center pt-4 mt-4 border-t border-slate-100 dark:border-slate-800">

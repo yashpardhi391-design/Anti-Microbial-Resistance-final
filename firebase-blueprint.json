@@ -1,0 +1,26 @@
+{
+  "collections": {
+    "users": {
+      "description": "Registered hospital clinical accounts, patients, and admins",
+      "schema": {
+        "id": "string",
+        "email": "string",
+        "name": "string",
+        "role": "string",
+        "createdAt": "timestamp"
+      }
+    },
+    "records": {
+      "description": "User comparative report dossiers saved securely in the cloud",
+      "schema": {
+        "id": "string",
+        "userId": "string",
+        "patient1": "object",
+        "patient2": "object",
+        "analysis": "object",
+        "rows": "array",
+        "createdAt": "timestamp"
+      }
+    }
+  }
+}

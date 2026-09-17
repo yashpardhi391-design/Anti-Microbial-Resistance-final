@@ -39,139 +39,183 @@ export const AuthModal: React.FC = () => {
     loginAsPatient,
     loginAsUser,
     loginCustom,
+    firebaseSignUp,
+    firebaseSignIn,
   } = useAuth();
 
   const [role, setRole] = useState<UserRole>(modalDefaultRole || "doctor");
   const [mode, setMode] = useState<"signin" | "signup">(modalDefaultMode || "signin");
 
   // Admin Form States
-  const [adminId, setAdminId] = useState("ADMIN-ICMR-NCR-8801");
-  const [adminEmail, setAdminEmail] = useState("admin.director@aiims-amr.org");
-  const [adminPass, setAdminPass] = useState("••••••••••••");
+  const [adminId, setAdminId] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminPass, setAdminPass] = useState("");
   const [adminName, setAdminName] = useState("");
 
   // Doctor Form States
-  const [docEmail, setDocEmail] = useState("dr.vance@aiims-amr.org");
-  const [docPassword, setDocPassword] = useState("••••••••••••");
-  const [docLicense, setDocLicense] = useState("MCI-ND-2016-84920");
-  const [docHospital, setDocHospital] = useState("AIIMS & ICMR AMR Center");
+  const [docEmail, setDocEmail] = useState("");
+  const [docPassword, setDocPassword] = useState("");
+  const [docLicense, setDocLicense] = useState("");
+  const [docHospital, setDocHospital] = useState("");
   const [docName, setDocName] = useState("");
   const [docDept, setDocDept] = useState("Clinical Microbiology & Infectious Diseases");
 
   // Patient Form States
-  const [patUhid, setPatUhid] = useState("UHID-2026-P204119");
-  const [patPhone, setPatPhone] = useState("+91 94120 58392");
-  const [patPasscode, setPatPasscode] = useState("••••••");
+  const [patUhid, setPatUhid] = useState("");
+  const [patPhone, setPatPhone] = useState("");
+  const [patPasscode, setPatPasscode] = useState("");
   const [patName, setPatName] = useState("");
   const [patBloodGroup, setPatBloodGroup] = useState<BloodGroup>("O+");
-  const [patReportCode, setPatReportCode] = useState("PRP-2041-1092-8801");
+  const [patReportCode, setPatReportCode] = useState("");
 
   // Staff / User Form States
-  const [staffId, setStaffId] = useState("STF-LAB-4029");
-  const [staffEmail, setStaffEmail] = useState("pooja.nair@aiims-amr.org");
-  const [staffPass, setStaffPass] = useState("••••••••••••");
+  const [staffId, setStaffId] = useState("");
+  const [staffEmail, setStaffEmail] = useState("");
+  const [staffPass, setStaffPass] = useState("");
   const [staffName, setStaffName] = useState("");
   const [staffBranch, setStaffBranch] = useState("Central Bacteriology Wing");
 
   const [errorMsg, setErrorMsg] = useState("");
 
+  const handleAutoFillDemo = () => {
+    setErrorMsg("");
+    if (role === "admin") {
+      setAdminId("ADMIN-ICMR-NCR-8801");
+      setAdminEmail("admin.director@aiims-amr.org");
+      setAdminPass("••••••••••••");
+    } else if (role === "doctor") {
+      setDocEmail("dr.vance@aiims-amr.org");
+      setDocPassword("••••••••••••");
+      setDocLicense("MCI-ND-2016-84920");
+      setDocHospital("AIIMS & ICMR AMR Center");
+    } else if (role === "patient") {
+      setPatUhid("UHID-2026-P204119");
+      setPatPhone("+91 94120 58392");
+      setPatPasscode("••••••");
+      setPatReportCode("PRP-2041-1092-8801");
+    } else {
+      setStaffId("STF-LAB-4029");
+      setStaffEmail("pooja.nair@aiims-amr.org");
+      setStaffPass("••••••••••••");
+    }
+  };
+
   if (!isAuthModalOpen) return null;
 
-  const handleAdminSubmit = (e: React.FormEvent) => {
+  const handleAdminSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
-    if (mode === "signin") {
-      loginAsAdmin(adminId, adminEmail);
-    } else {
-      if (!adminName.trim()) {
-        setErrorMsg("Please enter Administrator's Name");
-        return;
+    try {
+      if (mode === "signin") {
+        if (adminEmail === "admin.director@aiims-amr.org" && adminPass === "••••••••••••") {
+          loginAsAdmin(adminId, adminEmail);
+        } else {
+          await firebaseSignIn(adminEmail, adminPass);
+        }
+      } else {
+        if (!adminName.trim()) {
+          setErrorMsg("Please enter Administrator's Name");
+          return;
+        }
+        await firebaseSignUp(adminEmail, adminPass, {
+          role: "admin",
+          name: adminName,
+          adminId: adminId,
+          securityClearance: "Level 4 (Directorate Governance)",
+          hospitalName: "AIIMS Apex Antimicrobial Governance Directorate",
+        });
       }
-      loginCustom({
-        id: `ADM-${Math.floor(1000 + Math.random() * 9000)}`,
-        role: "admin",
-        name: adminName,
-        email: adminEmail,
-        adminId: adminId,
-        securityClearance: "Level 4 (Directorate Governance)",
-        hospitalName: "AIIMS Apex Antimicrobial Governance Directorate",
-        isVerified: true,
-        twoFactorEnabled: true,
-      });
+    } catch (err: any) {
+      setErrorMsg(err.message || "Authentication failed. Check your password.");
     }
   };
 
-  const handleDoctorSubmit = (e: React.FormEvent) => {
+  const handleDoctorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
-    if (mode === "signin") {
-      loginAsDoctor(docEmail, docLicense);
-    } else {
-      if (!docName.trim()) {
-        setErrorMsg("Please enter Doctor's Full Name");
-        return;
+    try {
+      if (mode === "signin") {
+        if (docEmail === "dr.vance@aiims-amr.org" && docPassword === "••••••••••••") {
+          loginAsDoctor(docEmail, docLicense);
+        } else {
+          await firebaseSignIn(docEmail, docPassword);
+        }
+      } else {
+        if (!docName.trim()) {
+          setErrorMsg("Please enter Doctor's Full Name");
+          return;
+        }
+        await firebaseSignUp(docEmail, docPassword, {
+          role: "doctor",
+          name: docName.startsWith("Dr.") ? docName : `Dr. ${docName}`,
+          medicalLicenseNo: docLicense,
+          hospitalName: docHospital,
+          department: docDept,
+          designation: "Attending Consultant / Stewardship Officer",
+        });
       }
-      loginCustom({
-        id: `DOC-${Math.floor(1000 + Math.random() * 9000)}`,
-        role: "doctor",
-        name: docName.startsWith("Dr.") ? docName : `Dr. ${docName}`,
-        email: docEmail,
-        medicalLicenseNo: docLicense,
-        hospitalName: docHospital,
-        department: docDept,
-        designation: "Attending Consultant / Stewardship Officer",
-        isVerified: true,
-        twoFactorEnabled: true,
-      });
+    } catch (err: any) {
+      setErrorMsg(err.message || "Authentication failed.");
     }
   };
 
-  const handlePatientSubmit = (e: React.FormEvent) => {
+  const handlePatientSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
-    if (mode === "signin") {
-      loginAsPatient(patUhid, patReportCode);
-    } else {
-      if (!patName.trim()) {
-        setErrorMsg("Please enter Patient's Full Name");
-        return;
+    try {
+      if (mode === "signin") {
+        if (patUhid === "UHID-2026-P204119" && patPasscode === "••••••") {
+          loginAsPatient(patUhid, patReportCode);
+        } else {
+          const email = `${patUhid.toLowerCase()}@patient-portal.org`;
+          await firebaseSignIn(email, patPasscode);
+        }
+      } else {
+        if (!patName.trim()) {
+          setErrorMsg("Please enter Patient's Full Name");
+          return;
+        }
+        const email = `${patUhid.toLowerCase()}@patient-portal.org`;
+        await firebaseSignUp(email, patPasscode, {
+          role: "patient",
+          name: patName,
+          phone: patPhone,
+          uhid: patUhid || `UHID-2026-${Math.floor(100000 + Math.random() * 900000)}`,
+          bloodGroup: patBloodGroup,
+          associatedReportCode: patReportCode || "PRP-2041-1092-8801",
+          wardOrBed: "General Medical Ward",
+        });
       }
-      loginCustom({
-        id: `PAT-${Math.floor(1000 + Math.random() * 9000)}`,
-        role: "patient",
-        name: patName,
-        email: `${patName.toLowerCase().replace(/\s+/g, ".")}@patient-portal.org`,
-        phone: patPhone,
-        uhid: patUhid || `UHID-2026-${Math.floor(100000 + Math.random() * 900000)}`,
-        bloodGroup: patBloodGroup,
-        associatedReportCode: patReportCode || "PRP-2041-1092-8801",
-        wardOrBed: "General Medical Ward",
-        isVerified: true,
-      });
+    } catch (err: any) {
+      setErrorMsg(err.message || "Authentication failed.");
     }
   };
 
-  const handleStaffSubmit = (e: React.FormEvent) => {
+  const handleStaffSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
-    if (mode === "signin") {
-      loginAsUser(staffId, staffEmail);
-    } else {
-      if (!staffName.trim()) {
-        setErrorMsg("Please enter Staff/Technologist Name");
-        return;
+    try {
+      if (mode === "signin") {
+        if (staffEmail === "pooja.nair@aiims-amr.org" && staffPass === "••••••••••••") {
+          loginAsUser(staffId, staffEmail);
+        } else {
+          await firebaseSignIn(staffEmail, staffPass);
+        }
+      } else {
+        if (!staffName.trim()) {
+          setErrorMsg("Please enter Staff/Technologist Name");
+          return;
+        }
+        await firebaseSignUp(staffEmail, staffPass, {
+          role: "user",
+          name: staffName,
+          staffId: staffId,
+          staffRole: "Clinical Lab Technologist",
+          laboratoryBranch: staffBranch,
+        });
       }
-      loginCustom({
-        id: `STF-${Math.floor(1000 + Math.random() * 9000)}`,
-        role: "user",
-        name: staffName,
-        email: staffEmail,
-        staffId: staffId,
-        staffRole: "Clinical Lab Technologist",
-        laboratoryBranch: staffBranch,
-        isVerified: true,
-        twoFactorEnabled: true,
-      });
+    } catch (err: any) {
+      setErrorMsg(err.message || "Authentication failed.");
     }
   };
 
@@ -330,23 +374,33 @@ export const AuthModal: React.FC = () => {
             <div className="flex items-center space-x-2 text-xs text-teal-900 dark:text-teal-200">
               <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
               <span>
-                <strong>Quick Presentation Demo:</strong> 1-Click {role} login
+                <strong>Quick Presentation Demo:</strong> 1-Click login or fill test data
               </span>
             </div>
-            <button
-              type="button"
-              id="instant-demo-login-btn"
-              onClick={() => {
-                if (role === "admin") loginAsAdmin();
-                else if (role === "doctor") loginAsDoctor();
-                else if (role === "patient") loginAsPatient();
-                else loginAsUser();
-              }}
-              className="w-full sm:w-auto shrink-0 px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center justify-center space-x-1.5"
-            >
-              <span>1-Click {role.toUpperCase()} Login</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-1.5 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleAutoFillDemo}
+                className="w-full sm:w-auto px-3.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                title="Fill input fields with demo credentials"
+              >
+                Auto-Fill Demo
+              </button>
+              <button
+                type="button"
+                id="instant-demo-login-btn"
+                onClick={() => {
+                  if (role === "admin") loginAsAdmin();
+                  else if (role === "doctor") loginAsDoctor();
+                  else if (role === "patient") loginAsPatient();
+                  else loginAsUser();
+                }}
+                className="w-full sm:w-auto px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center justify-center space-x-1.5"
+              >
+                <span>1-Click Login</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {/* 1. ADMIN PORTAL FORM */}

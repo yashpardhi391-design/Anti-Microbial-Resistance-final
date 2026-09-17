@@ -38,18 +38,7 @@ import { Shield } from "lucide-react";
 export function AppContent() {
   const { user, isAuthenticated } = useAuth();
 
-  const [savedRecords, setSavedRecords] = useState<SavedComparativeRecord[]>(() => {
-    try {
-      const stored = localStorage.getItem("pharma_resist_records");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {
-      // fallback
-    }
-    return SAMPLE_SAVED_RECORDS;
-  });
+  const [savedRecords, setSavedRecords] = useState<SavedComparativeRecord[]>(SAMPLE_SAVED_RECORDS);
 
   const [p1, setP1] = useState<PatientData>(SAMPLE_PATIENT_RECORDS[0]);
   const [p2, setP2] = useState<PatientData>(SAMPLE_PATIENT_RECORDS[1]);
@@ -92,21 +81,89 @@ export function AppContent() {
     });
   }, [p1, p2]);
 
-  // Sync saved records to localStorage
+  // Sync saved records to localStorage and Cloud Firestore
   useEffect(() => {
-    try {
-      localStorage.setItem("pharma_resist_records", JSON.stringify(savedRecords));
-    } catch {
-      // ignore
+    async function loadFirebaseRecords() {
+      if (user && user.sessionToken?.startsWith("FIREBASE")) {
+        try {
+          const { collection, getDocs, query, where } = await import("firebase/firestore");
+          const { db } = await import("./lib/firebase");
+          const q = query(collection(db, "records"), where("userId", "==", user.id));
+          const querySnapshot = await getDocs(q);
+          const loaded: SavedComparativeRecord[] = [];
+          querySnapshot.forEach((docSnap) => {
+            loaded.push({ id: docSnap.id, ...docSnap.data() } as SavedComparativeRecord);
+          });
+          if (loaded.length > 0) {
+            setSavedRecords(loaded);
+          } else {
+            // Seed cloud firestore with initial sample records
+            setSavedRecords(SAMPLE_SAVED_RECORDS);
+            const { doc, writeBatch } = await import("firebase/firestore");
+            const batch = writeBatch(db);
+            SAMPLE_SAVED_RECORDS.forEach((rec) => {
+              const docRef = doc(db, "records", rec.id);
+              batch.set(docRef, { ...rec, userId: user.id });
+            });
+            await batch.commit();
+          }
+        } catch (error) {
+          console.error("Error loading comparative records from cloud:", error);
+        }
+      } else {
+        // Local-authenticated, mock user, or unauthenticated fallback
+        try {
+          const storageKey = user ? `pharma_resist_records_${user.id}` : "pharma_resist_records";
+          const stored = localStorage.getItem(storageKey);
+          if (stored) {
+            setSavedRecords(JSON.parse(stored));
+          } else {
+            setSavedRecords(SAMPLE_SAVED_RECORDS);
+          }
+        } catch {
+          setSavedRecords(SAMPLE_SAVED_RECORDS);
+        }
+      }
     }
-  }, [savedRecords]);
+    loadFirebaseRecords();
+  }, [user]);
 
-  const handleSaveRecord = (newRec: ComparativeRecord) => {
+  // Save to local & Firestore
+  useEffect(() => {
+    if (user && user.sessionToken?.startsWith("FIREBASE")) return;
+    try {
+      const storageKey = user ? `pharma_resist_records_${user.id}` : "pharma_resist_records";
+      localStorage.setItem(storageKey, JSON.stringify(savedRecords));
+    } catch {}
+  }, [savedRecords, user]);
+
+  const handleSaveRecord = async (newRec: ComparativeRecord) => {
     setSavedRecords((prev) => [newRec as SavedComparativeRecord, ...(prev || [])]);
+    if (user && user.sessionToken?.startsWith("FIREBASE")) {
+      try {
+        const { doc, setDoc } = await import("firebase/firestore");
+        const { db } = await import("./lib/firebase");
+        await setDoc(doc(db, "records", newRec.id), {
+          ...newRec,
+          userId: user.id,
+        });
+      } catch (err) {
+        console.error("Cloud save failed:", err);
+      }
+    }
   };
 
-  const handleDeleteRecord = (id: string) => {
+  const handleDeleteRecord = async (id: string) => {
     setSavedRecords((prev) => (prev || []).filter((r) => r && r.id !== id));
+    if (user && user.sessionToken?.startsWith("FIREBASE")) {
+      try {
+        const { doc, deleteDoc } = await import("firebase/firestore");
+        const { db } = await import("./lib/firebase");
+        await deleteDoc(doc(db, "records", id));
+      } catch (err) {
+        console.error("Cloud delete failed:", err);
+      }
+    }
   };
 
   const handleOpenCodeLookup = (code?: string) => {
