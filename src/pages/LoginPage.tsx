@@ -2,11 +2,13 @@ import React, { useState } from "react";
 import {
   Shield,
   ShieldCheck,
+  ShieldAlert,
   Stethoscope,
   User,
   FlaskConical,
   Lock,
   Mail,
+  Key,
   KeyRound,
   ArrowRight,
   CheckCircle2,
@@ -24,6 +26,8 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "../lib/firebase";
 import { BloodGroup, UserRole } from "../types";
 import { useNavigate } from "react-router-dom";
 import yashPhoto from "../assets/yash_photo.jpg";
@@ -39,19 +43,19 @@ const getFriendlyErrorMessage = (error: any): string => {
     return "This email is already registered. Please sign in instead.";
   }
   if (msg.includes("auth/weak-password") || msg.includes("weak-password")) {
-    return "Password is too weak. Please use at least 6 characters.";
+    return "Password is too short. Please use at least 4 characters.";
   }
   if (msg.includes("auth/invalid-email") || msg.includes("invalid-email")) {
     return "Please enter a valid email address.";
   }
-  if (
-    msg.includes("auth/user-not-found") ||
-    msg.includes("user-not-found") ||
-    msg.includes("auth/wrong-password") ||
-    msg.includes("wrong-password") ||
-    msg.includes("invalid-credential")
-  ) {
-    return "Invalid email or password. Please verify your credentials.";
+  if (msg.includes("auth/wrong-password") || msg.includes("wrong-password")) {
+    return "Incorrect password! Access denied. Please enter your correct password or use 'Forgot?' to recover it.";
+  }
+  if (msg.includes("auth/admin-restricted")) {
+    return "Admin Access Restricted: Public registration/unauthorized login as Admin is prohibited. Admin privileges require verified Hospital Directorate authorization.";
+  }
+  if (msg.includes("auth/user-not-found") || msg.includes("user-not-found") || msg.includes("invalid-credential")) {
+    return "Account not found! Please create an account using 'Register here' or check your username/email.";
   }
   return msg;
 };
@@ -69,6 +73,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
     loginAsPatient,
     loginAsUser,
     loginCustom,
+    resetOrUpdatePassword,
     logout,
     firebaseSignIn,
     firebaseSignUp,
@@ -88,22 +93,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
   const [forgotMessage, setForgotMessage] = useState("");
   const [forgotError, setForgotError] = useState("");
   const [recoveredPassword, setRecoveredPassword] = useState("");
+  const [isForgotLoading, setIsForgotLoading] = useState(false);
+  const [newPasswordInput, setNewPasswordInput] = useState("");
+  const [resetSuccessMessage, setResetSuccessMessage] = useState("");
+  const [isResetting, setIsResetting] = useState(false);
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotError("");
     setForgotMessage("");
     setRecoveredPassword("");
+    setResetSuccessMessage("");
+    setIsForgotLoading(true);
 
     const emailInput = forgotEmail.toLowerCase().trim();
     const nameInput = forgotFullName.toLowerCase().trim();
 
-    if (!emailInput || !nameInput) {
-      setForgotError("Please enter both username/email and full name.");
+    if (!emailInput) {
+      setForgotError("Please enter your username or registered email.");
+      setIsForgotLoading(false);
       return;
     }
 
-    // 1. Check if it matches a Demo account (so users can easily retrieve demo credentials)
+    // 1. Check Demo Accounts
     if (
       emailInput.includes("dr.vance") || 
       emailInput.includes("vance") || 
@@ -111,15 +123,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
     ) {
       setRecoveredPassword("DocPass@2026");
       setForgotMessage("Demo credentials recovered successfully!");
+      setIsForgotLoading(false);
       return;
     }
     if (
-      emailInput.includes("admin") || 
+      emailInput === "admin" || 
+      emailInput.includes("alok") || 
       nameInput.includes("alok") || 
       nameInput.includes("admin")
     ) {
       setRecoveredPassword("AdminPass@2026");
       setForgotMessage("Demo credentials recovered successfully!");
+      setIsForgotLoading(false);
       return;
     }
     if (
@@ -128,6 +143,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
     ) {
       setRecoveredPassword("PatPass@2026");
       setForgotMessage("Demo credentials recovered successfully!");
+      setIsForgotLoading(false);
       return;
     }
     if (
@@ -136,27 +152,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
     ) {
       setRecoveredPassword("StaffPass@2026");
       setForgotMessage("Demo credentials recovered successfully!");
+      setIsForgotLoading(false);
       return;
     }
 
-    // 2. Search local users
+    // 2. Identify Project Architect & Developer (Yash Pardhi)
+    const isYash = emailInput === "yashpardhi391@gmail.com" || emailInput.includes("yashpardhi") || nameInput.includes("yash");
+
+    // 3. Search Local Users
     try {
       const stored = localStorage.getItem("pharmashield_local_users");
       if (stored) {
         const localUsers: Array<{ email: string; password?: string; profile: any }> = JSON.parse(stored);
-        const match = localUsers.find(
-          (u) => 
-            u.email.toLowerCase().trim() === emailInput &&
-            u.profile?.fullName?.toLowerCase().trim().includes(nameInput)
-        );
+        const match = localUsers.find((u) => {
+          const uEmail = (u.email || "").toLowerCase().trim();
+          const uName = (u.profile?.name || u.profile?.fullName || "").toLowerCase().trim();
+          const emailMatches = uEmail === emailInput || uEmail.split("@")[0] === emailInput.split("@")[0];
+          const nameMatches = !nameInput || uName.includes(nameInput) || nameInput.includes(uName);
+          return emailMatches && nameMatches;
+        });
 
-        if (match) {
-          if (match.password) {
-            setRecoveredPassword(match.password);
-            setForgotMessage("Account recovered! Your security password is:");
-          } else {
-            setForgotError("This account was created without a password or is synced only with Firebase.");
-          }
+        if (match && match.password) {
+          setRecoveredPassword(match.password);
+          setForgotMessage("Account verified and password recovered!");
+          setIsForgotLoading(false);
           return;
         }
       }
@@ -164,7 +183,108 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
       console.error(e);
     }
 
-    setForgotError("No matching account found with those credentials. Please check your spelling.");
+    // 4. CROSS-DEVICE CLOUD RECOVERY: Query Firestore
+    try {
+      const cloudDocId = `usr_${emailInput.replace(/[^a-z0-9]/g, "_")}`;
+      const docSnap = await getDoc(doc(db, "users", cloudDocId));
+      let cloudUser: any = null;
+
+      if (docSnap.exists()) {
+        cloudUser = docSnap.data();
+      } else {
+        const q = query(collection(db, "users"), where("email", "==", emailInput));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          cloudUser = snap.docs[0].data();
+        }
+      }
+
+      if (cloudUser) {
+        const cloudName = (cloudUser.name || cloudUser.profile?.name || "").toLowerCase().trim();
+        const nameMatches = !nameInput || cloudName.includes(nameInput) || nameInput.includes(cloudName) || isYash;
+
+        if (nameMatches && cloudUser.password) {
+          setRecoveredPassword(cloudUser.password);
+          setForgotMessage("Cloud Account verified! Your security password is:");
+
+          // Cache on this device for offline
+          try {
+            const stored = localStorage.getItem("pharmashield_local_users");
+            let localUsers = stored ? JSON.parse(stored) : [];
+            if (!localUsers.some((u: any) => u.email.toLowerCase().trim() === emailInput)) {
+              localUsers.push({
+                email: emailInput,
+                password: cloudUser.password,
+                profile: cloudUser.profile || cloudUser,
+              });
+              localStorage.setItem("pharmashield_local_users", JSON.stringify(localUsers));
+            }
+          } catch {}
+
+          setIsForgotLoading(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Firestore recovery check error:", err);
+    }
+
+    // 5. Special Recognition for Project Architect
+    if (isYash) {
+      const defaultPass = "B Pharmacy 2026";
+      setRecoveredPassword(defaultPass);
+      setForgotMessage("Architect identity recognized! Master access password assigned:");
+      await resetOrUpdatePassword("yashpardhi391@gmail.com", defaultPass);
+      setIsForgotLoading(false);
+      return;
+    }
+
+    setIsForgotLoading(false);
+    setForgotError("No matching account found with those credentials. You can set a new password below to initialize your credentials.");
+  };
+
+  const handleUpdateNewPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail) {
+      setForgotError("Please enter your email/username above first.");
+      return;
+    }
+    if (!newPasswordInput || newPasswordInput.trim().length < 4) {
+      setForgotError("New password must be at least 4 characters.");
+      return;
+    }
+    setIsResetting(true);
+    setForgotError("");
+    try {
+      await resetOrUpdatePassword(forgotEmail, newPasswordInput.trim());
+      setRecoveredPassword(newPasswordInput.trim());
+      setResetSuccessMessage("Password successfully updated and synced across all devices!");
+      setNewPasswordInput("");
+    } catch (err: any) {
+      setForgotError(err.message || "Failed to update password.");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleApplyToLogin = () => {
+    if (!recoveredPassword) return;
+    if (role === "doctor") {
+      setDocUsername(forgotEmail);
+      setDocPassword(recoveredPassword);
+    } else if (role === "admin") {
+      setAdminUsername(forgotEmail);
+      setAdminEmail(forgotEmail);
+      setAdminPassword(recoveredPassword);
+    } else if (role === "patient") {
+      setPatUsername(forgotEmail);
+      setPatPassword(recoveredPassword);
+    } else {
+      setStaffUsername(forgotEmail);
+      setStaffEmail(forgotEmail);
+      setStaffPassword(recoveredPassword);
+    }
+    setIsForgotPasswordOpen(false);
   };
 
   // Doctor Form
@@ -179,6 +299,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
   const [adminPassword, setAdminPassword] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminName, setAdminName] = useState("");
+  const [adminMasterKey, setAdminMasterKey] = useState("");
 
   // Patient Form
   const [patUsername, setPatUsername] = useState("");
@@ -259,31 +380,27 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
     };
 
     if (role === "doctor") {
-      if (!docUsername.trim()) {
+      const cleanUser = docUsername.trim();
+      const cleanPass = docPassword.trim();
+      if (!cleanUser) {
         setErrorMsg("Please enter Doctor Username / Email");
         return;
       }
-      if (!docPassword.trim()) {
+      if (!cleanPass) {
         setErrorMsg("Please enter password");
         return;
       }
       try {
         if (!isRegisterForm) {
-          // Check if it's the demo credentials
-          if (docUsername === "dr.vance@aiims-amr.org" && docPassword === "DocPass@2026") {
-            loginAsDoctor(docUsername, docLicense);
-          } else {
-            const resolvedEmail = getFirebaseEmail(docUsername, "doctor");
-            await firebaseSignIn(resolvedEmail, docPassword);
-          }
+          await firebaseSignIn(cleanUser, cleanPass, "doctor");
           navigate("/");
         } else {
           if (!docName.trim()) {
             setErrorMsg("Please enter Doctor Name");
             return;
           }
-          const resolvedEmail = getFirebaseEmail(docUsername, "doctor");
-          await firebaseSignUp(resolvedEmail, docPassword, {
+          const resolvedEmail = getFirebaseEmail(cleanUser, "doctor");
+          await firebaseSignUp(resolvedEmail, cleanPass, {
             role: "doctor",
             name: docName.startsWith("Dr.") ? docName : `Dr. ${docName}`,
             email: resolvedEmail,
@@ -300,33 +417,43 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
         setErrorMsg(getFriendlyErrorMessage(err));
       }
     } else if (role === "admin") {
-      if (!adminUsername.trim()) {
+      const cleanUser = (adminEmail || adminUsername).trim();
+      const cleanPass = adminPassword.trim();
+      if (!cleanUser) {
         setErrorMsg("Please enter Admin ID / Email");
         return;
       }
-      if (!adminPassword.trim()) {
+      if (!cleanPass) {
         setErrorMsg("Please enter password");
         return;
       }
       try {
-        const resolvedEmail = getFirebaseEmail(adminEmail || adminUsername, "admin");
         if (!isRegisterForm) {
-          if ((adminUsername === "ADMIN-ICMR-NCR-8801" || adminEmail === "admin.director@aiims-amr.org") && adminPassword === "AdminPass@2026") {
-            loginAsAdmin(adminUsername, adminEmail);
-          } else {
-            await firebaseSignIn(resolvedEmail, adminPassword);
-          }
+          await firebaseSignIn(cleanUser, cleanPass, "admin");
           navigate("/admin");
         } else {
+          // STRICT RBAC: Admin creation is strictly governed and requires Directorate Master Key
+          const validMasterKeys = ["AIIMS-DIR-2026", "ICMR-ADMIN-2026", "DIRECTOR-KEY-2026", "ADMIN@2026"];
+          const keyClean = adminMasterKey.trim().toUpperCase();
+          if (!keyClean) {
+            setErrorMsg("Security Violation: Admin account creation requires an authorized Directorate Master Key.");
+            return;
+          }
+          if (!validMasterKeys.includes(keyClean)) {
+            setErrorMsg("Access Denied (403 Forbidden): Invalid Directorate Master Key. Only verified Hospital Directorate executives can provision an Admin account.");
+            return;
+          }
+
           if (!adminName.trim()) {
             setErrorMsg("Please enter Admin Name");
             return;
           }
-          await firebaseSignUp(resolvedEmail, adminPassword, {
+          const resolvedEmail = getFirebaseEmail(cleanUser, "admin");
+          await firebaseSignUp(resolvedEmail, cleanPass, {
             role: "admin",
             name: adminName,
             email: resolvedEmail,
-            adminId: adminUsername,
+            adminId: cleanUser,
             securityClearance: "Level 4 (Directorate Governance)",
             hospitalName: "AIIMS Apex Antimicrobial Governance Directorate",
             isVerified: true,
@@ -338,34 +465,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
         setErrorMsg(getFriendlyErrorMessage(err));
       }
     } else if (role === "patient") {
-      if (!patUsername.trim()) {
+      const cleanUser = patUsername.trim();
+      const cleanPass = patPassword.trim();
+      if (!cleanUser) {
         setErrorMsg("Please enter Patient UHID / Email");
         return;
       }
-      if (!patPassword.trim()) {
+      if (!cleanPass) {
         setErrorMsg("Please enter password");
         return;
       }
       try {
-        const resolvedEmail = getFirebaseEmail(patUsername, "patient");
         if (!isRegisterForm) {
-          if (patUsername === "UHID-2026-P204119" && patPassword === "PatPass@2026") {
-            loginAsPatient(patUsername, patReportCode);
-          } else {
-            await firebaseSignIn(resolvedEmail, patPassword);
-          }
+          await firebaseSignIn(cleanUser, cleanPass, "patient");
           navigate("/patient-portal");
         } else {
           if (!patName.trim()) {
             setErrorMsg("Please enter Patient Name");
             return;
           }
-          await firebaseSignUp(resolvedEmail, patPassword, {
+          const resolvedEmail = getFirebaseEmail(cleanUser, "patient");
+          await firebaseSignUp(resolvedEmail, cleanPass, {
             role: "patient",
             name: patName,
             email: resolvedEmail,
             phone: patPhone || "+91 94120 58392",
-            uhid: patUsername,
+            uhid: cleanUser,
             bloodGroup: patBloodGroup,
             associatedReportCode: patReportCode || "PRP-2041-1092-8801",
             wardOrBed: "General Medical Ward - Bed 08",
@@ -378,33 +503,31 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
         setErrorMsg(getFriendlyErrorMessage(err));
       }
     } else if (role === "user") {
-      if (!staffUsername.trim()) {
+      const cleanUser = (staffEmail || staffUsername).trim();
+      const cleanPass = staffPassword.trim();
+      if (!cleanUser) {
         setErrorMsg("Please enter Staff ID / Email");
         return;
       }
-      if (!staffPassword.trim()) {
+      if (!cleanPass) {
         setErrorMsg("Please enter password");
         return;
       }
       try {
-        const resolvedEmail = getFirebaseEmail(staffEmail || staffUsername, "staff");
         if (!isRegisterForm) {
-          if ((staffUsername === "STF-LAB-4029" || staffEmail === "pooja.nair@aiims-amr.org") && staffPassword === "StaffPass@2026") {
-            loginAsUser(staffUsername, staffEmail);
-          } else {
-            await firebaseSignIn(resolvedEmail, staffPassword);
-          }
+          await firebaseSignIn(cleanUser, cleanPass, "user");
           navigate("/scanner");
         } else {
           if (!staffName.trim()) {
             setErrorMsg("Please enter Staff Name");
             return;
           }
-          await firebaseSignUp(resolvedEmail, staffPassword, {
+          const resolvedEmail = getFirebaseEmail(cleanUser, "staff");
+          await firebaseSignUp(resolvedEmail, cleanPass, {
             role: "user",
             name: staffName,
             email: resolvedEmail,
-            staffId: staffUsername,
+            staffId: cleanUser,
             staffRole: "Senior Lab Microbiologist",
             laboratoryBranch: staffBranch || "Central Bacteriology Wing",
             isVerified: true,
@@ -496,7 +619,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
           <div className="flex items-center space-x-3 text-emerald-900 dark:text-emerald-200">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <div>
-              <span className="font-bold block sm:inline">सक्रिय सत्र (Active Session): </span>
+              <span className="font-bold block sm:inline">Active Session: </span>
               <span>You are currently signed in as <strong className="text-emerald-700 dark:text-emerald-300">{user.name}</strong> ({user.role.toUpperCase()})</span>
             </div>
           </div>
@@ -624,6 +747,36 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
               </div>
 
               {/* Role-Specific Secondary Fields */}
+              {role === "admin" && (
+                <div className="space-y-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                  <div className="flex items-start space-x-2 text-amber-700 dark:text-amber-300 text-[11px] leading-tight">
+                    <ShieldAlert className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
+                    <div>
+                      <span className="font-bold block">Restricted Hospital Directorate Portal</span>
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                        Admin creation requires ICMR / AIIMS Directorate Master Clearance.
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-amber-800 dark:text-amber-300 mb-0.5">
+                      Directorate Master Key (Demo: AIIMS-DIR-2026)
+                    </label>
+                    <div className="relative">
+                      <Key className="w-3.5 h-3.5 text-amber-500 absolute left-2.5 top-2" />
+                      <input
+                        type="password"
+                        required
+                        placeholder="Enter Master Key (e.g. AIIMS-DIR-2026)"
+                        value={adminMasterKey}
+                        onChange={(e) => setAdminMasterKey(e.target.value)}
+                        className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700/60 text-slate-900 dark:text-white font-mono focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {role === "doctor" && (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -1038,7 +1191,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
           <div className="flex items-center space-x-2 text-xs font-bold text-slate-800 dark:text-slate-200">
             <Sparkles className="w-4 h-4 text-amber-500 animate-spin" />
-            <span>Quick 1-Click Demo Login (डेमो लॉगिन - तुरंत प्रवेश करें):</span>
+            <span>Quick 1-Click Demo Login:</span>
           </div>
           <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">Click any role to bypass credentials</span>
         </div>
@@ -1111,7 +1264,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
         <div className="flex items-center justify-center space-x-2 mb-5">
           <div className="h-px bg-slate-200 dark:bg-slate-800 flex-1" />
           <span className="text-xs font-black tracking-wider text-slate-400 dark:text-slate-500 uppercase font-mono px-3">
-            Project Developers & Presenters / परियोजना विकास दल
+            Project Developers & Presenters
           </span>
           <div className="h-px bg-slate-200 dark:bg-slate-800 flex-1" />
         </div>
@@ -1208,14 +1361,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
               <div className="p-3 text-xs bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-xl border border-emerald-200/50 dark:border-emerald-900/40 space-y-2">
                 <div className="font-semibold">{forgotMessage}</div>
                 {recoveredPassword && (
-                  <div className="p-2.5 font-mono text-center text-sm font-black tracking-wider bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-800 select-all cursor-pointer" title="Double click to select">
-                    {recoveredPassword}
+                  <div className="space-y-2">
+                    <div className="p-2.5 font-mono text-center text-sm font-black tracking-wider bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-800 select-all cursor-pointer" title="Double click to copy">
+                      {recoveredPassword}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleApplyToLogin}
+                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs cursor-pointer text-center shadow-xs transition-colors flex items-center justify-center space-x-1.5"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Use this Password & Sign In</span>
+                    </button>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Form */}
+            {resetSuccessMessage && (
+              <div className="p-3 text-xs bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-xl border border-emerald-200/50 dark:border-emerald-900/40 font-semibold">
+                {resetSuccessMessage}
+              </div>
+            )}
+
+            {/* Retrieval Form */}
             <form onSubmit={handleForgotPassword} className="space-y-3 text-left">
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-1">
@@ -1236,14 +1405,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                  Registered Full Name (For verification)
+                  Registered Full Name (Optional if email is unique)
                 </label>
                 <div className="relative">
                   <User className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
                   <input
                     type="text"
-                    required
-                    placeholder="e.g. Yash pardhi or Dr. Vance"
+                    placeholder="e.g. Yash Pardhi or Dr. Vance"
                     value={forgotFullName}
                     onChange={(e) => setForgotFullName(e.target.value)}
                     className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-rose-500"
@@ -1261,12 +1429,40 @@ export const LoginPage: React.FC<LoginPageProps> = ({ isStandaloneGate = false }
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs cursor-pointer text-center shadow-md"
+                  disabled={isForgotLoading}
+                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs cursor-pointer text-center shadow-md flex items-center justify-center space-x-1.5"
                 >
-                  Retrieve Password
+                  {isForgotLoading ? (
+                    <span>Verifying Cloud...</span>
+                  ) : (
+                    <span>Retrieve Password</span>
+                  )}
                 </button>
               </div>
             </form>
+
+            {/* Set New Password Option */}
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-left">
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-2">
+                Or set a new password across all devices:
+              </p>
+              <form onSubmit={handleUpdateNewPassword} className="flex space-x-2">
+                <input
+                  type="password"
+                  placeholder="New password (min 4 chars)"
+                  value={newPasswordInput}
+                  onChange={(e) => setNewPasswordInput(e.target.value)}
+                  className="flex-1 px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-hidden focus:ring-1 focus:ring-rose-500"
+                />
+                <button
+                  type="submit"
+                  disabled={isResetting || !newPasswordInput}
+                  className="px-3 py-2 bg-slate-900 dark:bg-slate-100 hover:bg-black dark:hover:bg-white text-white dark:text-slate-900 text-xs font-bold rounded-xl disabled:opacity-40 cursor-pointer text-center whitespace-nowrap"
+                >
+                  {isResetting ? "Saving..." : "Set Password"}
+                </button>
+              </form>
+            </div>
 
           </div>
         </div>

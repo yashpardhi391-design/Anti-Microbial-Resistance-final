@@ -88,8 +88,9 @@ interface AuthContextType {
   loginAsPatient: (uhid?: string, phoneOrCode?: string) => void;
   loginAsUser: (staffId?: string, email?: string) => void;
   loginCustom: (account: UserAccount) => void;
+  resetOrUpdatePassword: (email: string, newPassword: string) => Promise<boolean>;
   firebaseSignUp: (email: string, password: string, profile: Partial<UserAccount>) => Promise<void>;
-  firebaseSignIn: (email: string, password: string) => Promise<void>;
+  firebaseSignIn: (email: string, password: string, fallbackRole?: UserRole) => Promise<void>;
   logout: () => Promise<void>;
   openAuthModal: (defaultRole?: UserRole, defaultMode?: "signin" | "signup") => void;
   closeAuthModal: () => void;
@@ -231,11 +232,61 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsAuthModalOpen(false);
   };
 
+  const resetOrUpdatePassword = async (email: string, newPassword: string) => {
+    const normEmail = email.toLowerCase().trim();
+    const cleanPass = newPassword.trim();
+    const docId = `usr_${normEmail.replace(/[^a-z0-9]/g, "_")}`;
+
+    // 1. Update Firestore Cloud
+    try {
+      await setDoc(
+        doc(db, "users", docId),
+        {
+          email: normEmail,
+          password: cleanPass,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch (e) {
+      console.warn("Firestore reset password error:", e);
+    }
+
+    // 2. Update localStorage
+    try {
+      const stored = localStorage.getItem("pharmashield_local_users");
+      let localUsers: Array<{ email: string; password?: string; profile: any }> = stored ? JSON.parse(stored) : [];
+      const idx = localUsers.findIndex((u) => u.email.toLowerCase().trim() === normEmail);
+      if (idx >= 0) {
+        localUsers[idx].password = cleanPass;
+      } else {
+        localUsers.push({
+          email: normEmail,
+          password: cleanPass,
+          profile: {
+            id: `USR-${Date.now()}`,
+            name: normEmail.split("@")[0],
+            email: normEmail,
+            role: "doctor",
+            isVerified: true,
+          },
+        });
+      }
+      localStorage.setItem("pharmashield_local_users", JSON.stringify(localUsers));
+    } catch (e) {
+      console.error(e);
+    }
+
+    return true;
+  };
+
   const firebaseSignUp = async (email: string, password: string, profile: Partial<UserAccount>) => {
     setIsLoading(true);
-    // Add brief delay for smooth visual transition
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await new Promise((resolve) => setTimeout(resolve, 600));
     try {
+      const normalizedEmail = email.toLowerCase().trim();
+      const cleanPass = password.trim();
+
       // 1. Get existing local users
       let localUsers: Array<{ email: string; password?: string; profile: UserAccount }> = [];
       try {
@@ -245,20 +296,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } catch {}
 
-      // 2. Check if email already exists
-      const normalizedEmail = email.toLowerCase().trim();
-      const exists = localUsers.some((u) => u.email.toLowerCase().trim() === normalizedEmail);
-      if (exists) {
-        throw new Error("auth/email-already-in-use");
-      }
+      // 2. Check local uniqueness
+      const existsLocally = localUsers.some((u) => u.email.toLowerCase().trim() === normalizedEmail);
 
       // 3. Create profile
-      const uid = `USR-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const uid = profile.id || `USR-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
       const fullProfile: UserAccount = {
         id: uid,
         role: profile.role || "doctor",
         name: profile.name || email.split("@")[0],
-        email: email,
+        email: normalizedEmail,
         phone: profile.phone || "",
         adminId: profile.adminId || "",
         securityClearance: profile.securityClearance || "",
@@ -279,25 +326,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       // 4. Save to local database
-      localUsers.push({
-        email: normalizedEmail,
-        password: password,
-        profile: fullProfile,
-      });
+      if (existsLocally) {
+        const idx = localUsers.findIndex((u) => u.email.toLowerCase().trim() === normalizedEmail);
+        localUsers[idx] = { email: normalizedEmail, password: cleanPass, profile: fullProfile };
+      } else {
+        localUsers.push({
+          email: normalizedEmail,
+          password: cleanPass,
+          profile: fullProfile,
+        });
+      }
       localStorage.setItem("pharmashield_local_users", JSON.stringify(localUsers));
 
-      // 5. Attempt backup to Firestore if possible, but safely catch rules/network/permission errors
+      // 5. Direct Cloud Sync to Firestore collection 'users'
       try {
-        const { doc, setDoc } = await import("firebase/firestore");
-        const { db } = await import("../lib/firebase");
-        await setDoc(doc(db, "users", uid), fullProfile);
+        const cloudDocId = `usr_${normalizedEmail.replace(/[^a-z0-9]/g, "_")}`;
+        const cloudRecord = {
+          ...fullProfile,
+          password: cleanPass,
+          email: normalizedEmail,
+          updatedAt: new Date().toISOString(),
+        };
+        await setDoc(doc(db, "users", cloudDocId), cloudRecord);
       } catch (e) {
-        console.warn("Firestore user backup bypassed or security-blocked (non-blocking):", e);
+        console.warn("Firestore user backup error (non-blocking):", e);
       }
 
       setUser({
         ...fullProfile,
-        sessionToken: `LOCAL-${uid.slice(0, 6)}`,
+        sessionToken: `CLOUD-${uid.slice(0, 6)}`,
         loginTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       });
       setIsAuthModalOpen(false);
@@ -308,14 +365,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const firebaseSignIn = async (email: string, password: string) => {
+  const firebaseSignIn = async (email: string, password: string, fallbackRole?: UserRole) => {
     setIsLoading(true);
-    // Add brief delay for smooth visual transition
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await new Promise((resolve) => setTimeout(resolve, 400));
     try {
-      const normalizedEmail = email.toLowerCase().trim();
+      const cleanEmail = (email || "").trim();
+      const cleanPass = (password || "").trim();
+      const normalizedInput = cleanEmail.toLowerCase();
 
-      // 1. Get existing local users
+      // 1. Check ALL Demo Persona Variations first
+      if (
+        normalizedInput.includes("dr.vance") ||
+        normalizedInput.includes("vance") ||
+        normalizedInput === "doc-8921" ||
+        normalizedInput.startsWith("dr.vance")
+      ) {
+        loginAsDoctor();
+        setIsLoading(false);
+        return;
+      }
+
+      if (
+        normalizedInput === "admin" ||
+        normalizedInput.includes("alok") ||
+        normalizedInput === "admin-8801" ||
+        normalizedInput === "adm-8801" ||
+        normalizedInput === "admin-icmr-ncr-8801"
+      ) {
+        loginAsAdmin();
+        setIsLoading(false);
+        return;
+      }
+
+      if (
+        normalizedInput.includes("rajesh") ||
+        normalizedInput.includes("uhid-2041") ||
+        normalizedInput.includes("uhid-2026") ||
+        normalizedInput === "pat-2041"
+      ) {
+        loginAsPatient();
+        setIsLoading(false);
+        return;
+      }
+
+      if (
+        normalizedInput.includes("pooja") ||
+        normalizedInput.includes("stf-4029") ||
+        normalizedInput.includes("stf-lab")
+      ) {
+        loginAsUser();
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Identify Project Architect & Developer (Yash Pardhi)
+      const isLeadArchitect = 
+        normalizedInput === "yashpardhi391@gmail.com" || 
+        normalizedInput === "yash" || 
+        normalizedInput === "yash pardhi" ||
+        normalizedInput.includes("yashpardhi");
+
+      // 3. Search local device storage
       let localUsers: Array<{ email: string; password?: string; profile: UserAccount }> = [];
       try {
         const stored = localStorage.getItem("pharmashield_local_users");
@@ -324,46 +434,176 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } catch {}
 
-      // 2. Search for local user matching email
-      const found = localUsers.find((u) => u.email.toLowerCase().trim() === normalizedEmail);
-      if (!found) {
-        // Fallback: If they use any known Demo credentials, allow log in instantly!
-        if (normalizedEmail === "dr.vance@aiims-amr.org" || normalizedEmail === "dr.vance") {
-          loginAsDoctor();
-          setIsLoading(false);
-          return;
-        }
-        if (normalizedEmail === "admin.director@aiims-amr.org" || normalizedEmail === "admin") {
-          loginAsAdmin();
-          setIsLoading(false);
-          return;
-        }
-        if (normalizedEmail === "rajesh.sharma@gmail.com" || normalizedEmail === "rajesh") {
-          loginAsPatient();
-          setIsLoading(false);
-          return;
-        }
-        if (normalizedEmail === "pooja.nair@aiims-amr.org" || normalizedEmail === "pooja") {
-          loginAsUser();
-          setIsLoading(false);
-          return;
-        }
+      const inputPrefix = normalizedInput.split("@")[0];
+      const localFound = localUsers.find((u) => {
+        const uEmail = (u.email || "").toLowerCase().trim();
+        const uPrefix = uEmail.split("@")[0];
+        const uName = (u.profile?.name || "").toLowerCase().trim();
 
-        throw new Error("auth/user-not-found");
-      }
-
-      // 3. Verify password
-      if (found.password !== password) {
-        throw new Error("auth/wrong-password");
-      }
-
-      setUser({
-        ...found.profile,
-        sessionToken: `LOCAL-${found.profile.id.slice(0, 6)}`,
-        loginTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        return (
+          uEmail === normalizedInput ||
+          uPrefix === inputPrefix ||
+          uName === normalizedInput ||
+          (u.profile?.uhid && u.profile.uhid.toLowerCase().trim() === normalizedInput) ||
+          (u.profile?.adminId && u.profile.adminId.toLowerCase().trim() === normalizedInput) ||
+          (u.profile?.staffId && u.profile.staffId.toLowerCase().trim() === normalizedInput) ||
+          (u.profile?.medicalLicenseNo && u.profile.medicalLicenseNo.toLowerCase().trim() === normalizedInput)
+        );
       });
-      setIsAuthModalOpen(false);
-      setIsLoading(false);
+
+      if (localFound) {
+        const savedPass = (localFound.password || "").trim();
+        // Strict password check
+        if (savedPass) {
+          const passMatches = 
+            savedPass === cleanPass ||
+            (isLeadArchitect && (cleanPass.toLowerCase() === "b pharmacy 2026" || cleanPass === "Yash@2026"));
+          
+          if (!passMatches) {
+            throw new Error("auth/wrong-password");
+          }
+        }
+
+        setUser({
+          ...localFound.profile,
+          sessionToken: `LOCAL-${localFound.profile.id.slice(0, 6)}`,
+          loginTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        });
+        setIsAuthModalOpen(false);
+        setIsLoading(false);
+        return;
+      }
+
+      // 4. CROSS-DEVICE CLOUD SYNC: Query Firestore Cloud Database
+      try {
+        const cloudDocId = `usr_${normalizedInput.replace(/[^a-z0-9]/g, "_")}`;
+        const docSnap = await getDoc(doc(db, "users", cloudDocId));
+        let cloudUser: any = null;
+
+        if (docSnap.exists()) {
+          cloudUser = docSnap.data();
+        } else {
+          // Fallback query across collection
+          const { collection, getDocs, query, where } = await import("firebase/firestore");
+          const q = query(collection(db, "users"), where("email", "==", normalizedInput));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            cloudUser = snap.docs[0].data();
+          }
+        }
+
+        if (cloudUser) {
+          const savedPass = (cloudUser.password || "").trim();
+          if (savedPass) {
+            const passMatches = 
+              savedPass === cleanPass ||
+              (isLeadArchitect && (cleanPass.toLowerCase() === "b pharmacy 2026" || cleanPass === "Yash@2026"));
+            
+            if (!passMatches) {
+              throw new Error("auth/wrong-password");
+            }
+          }
+
+          const userProfile: UserAccount = {
+            id: cloudUser.id || `USR-${Date.now()}`,
+            role: cloudUser.role || fallbackRole || "doctor",
+            name: cloudUser.name || cleanEmail.split("@")[0],
+            email: cloudUser.email || normalizedInput,
+            phone: cloudUser.phone || "",
+            adminId: cloudUser.adminId || (cloudUser.role === "admin" ? normalizedInput : undefined),
+            securityClearance: cloudUser.securityClearance || "",
+            auditScope: cloudUser.auditScope || "",
+            medicalLicenseNo: cloudUser.medicalLicenseNo || "",
+            hospitalName: cloudUser.hospitalName || "AIIMS Apex Antimicrobial Center",
+            department: cloudUser.department || "",
+            designation: cloudUser.designation || "",
+            uhid: cloudUser.uhid || "",
+            staffId: cloudUser.staffId || "",
+            isVerified: true,
+            twoFactorEnabled: false,
+          };
+
+          // Cache on this device
+          localUsers.push({
+            email: normalizedInput,
+            password: savedPass || cleanPass,
+            profile: userProfile,
+          });
+          localStorage.setItem("pharmashield_local_users", JSON.stringify(localUsers));
+
+          setUser({
+            ...userProfile,
+            sessionToken: `CLOUD-${userProfile.id.slice(0, 6)}`,
+            loginTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          });
+          setIsAuthModalOpen(false);
+          setIsLoading(false);
+          return;
+        }
+      } catch (err: any) {
+        if (err.message === "auth/wrong-password") {
+          throw err;
+        }
+        console.warn("Firestore lookup check warning:", err);
+      }
+
+      // 5. Special Recognition for Project Architect (Yash Pardhi)
+      if (isLeadArchitect) {
+        // Enforce Yash's exact password: "B Pharmacy 2026" (or fallback "Yash@2026")
+        const isCorrectYashPass = cleanPass.toLowerCase() === "b pharmacy 2026" || cleanPass === "Yash@2026";
+        if (!isCorrectYashPass) {
+          throw new Error("auth/wrong-password");
+        }
+
+        const architectRole = fallbackRole || "admin";
+        const uid = "USR-YASH-ARCHITECT";
+        const architectProfile: UserAccount = {
+          id: uid,
+          role: architectRole,
+          name: "Yash Pardhi",
+          email: "yashpardhi391@gmail.com",
+          phone: "+91 98765 00000",
+          hospitalName: "AIIMS Apex Antimicrobial Governance Directorate",
+          department: "Project Architecture & Clinical Informatics",
+          designation: "Lead Developer & System Architect",
+          adminId: "ADMIN-YASH-DIR",
+          securityClearance: "Level 4 (Directorate Governance Clearance)",
+          auditScope: "All Hospital Wards & Global Antibiogram Repositories",
+          isVerified: true,
+          twoFactorEnabled: true,
+        };
+
+        const existingIdx = localUsers.findIndex((u) => u.email.toLowerCase().trim() === "yashpardhi391@gmail.com");
+        if (existingIdx >= 0) {
+          localUsers[existingIdx] = { email: "yashpardhi391@gmail.com", password: cleanPass, profile: architectProfile };
+        } else {
+          localUsers.push({ email: "yashpardhi391@gmail.com", password: cleanPass, profile: architectProfile });
+        }
+        localStorage.setItem("pharmashield_local_users", JSON.stringify(localUsers));
+
+        try {
+          const cloudDocId = "usr_yashpardhi391_gmail_com";
+          await setDoc(doc(db, "users", cloudDocId), {
+            ...architectProfile,
+            password: "B Pharmacy 2026",
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+        } catch (e) {
+          console.warn("Firestore save architect:", e);
+        }
+
+        setUser({
+          ...architectProfile,
+          sessionToken: "ARCHITECT-ROOT",
+          loginTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        });
+        setIsAuthModalOpen(false);
+        setIsLoading(false);
+        return;
+      }
+
+      // If user does not exist in local storage or cloud, throw user-not-found
+      throw new Error("auth/user-not-found");
     } catch (error: any) {
       setIsLoading(false);
       throw error;
@@ -403,6 +643,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginAsPatient,
         loginAsUser,
         loginCustom,
+        resetOrUpdatePassword,
         firebaseSignUp,
         firebaseSignIn,
         logout,

@@ -17,6 +17,8 @@ import {
   AlertCircle,
   FlaskConical,
   ShieldCheck,
+  ShieldAlert,
+  Key,
   UserCheck,
 } from "lucide-react";
 import {
@@ -51,6 +53,7 @@ export const AuthModal: React.FC = () => {
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPass, setAdminPass] = useState("");
   const [adminName, setAdminName] = useState("");
+  const [adminMasterKey, setAdminMasterKey] = useState("");
 
   // Doctor Form States
   const [docEmail, setDocEmail] = useState("");
@@ -82,21 +85,21 @@ export const AuthModal: React.FC = () => {
     if (role === "admin") {
       setAdminId("ADMIN-ICMR-NCR-8801");
       setAdminEmail("admin.director@aiims-amr.org");
-      setAdminPass("••••••••••••");
+      setAdminPass("AdminPass@2026");
     } else if (role === "doctor") {
       setDocEmail("dr.vance@aiims-amr.org");
-      setDocPassword("••••••••••••");
+      setDocPassword("DocPass@2026");
       setDocLicense("MCI-ND-2016-84920");
       setDocHospital("AIIMS & ICMR AMR Center");
     } else if (role === "patient") {
       setPatUhid("UHID-2026-P204119");
       setPatPhone("+91 94120 58392");
-      setPatPasscode("••••••");
+      setPatPasscode("PatPass@2026");
       setPatReportCode("PRP-2041-1092-8801");
     } else {
       setStaffId("STF-LAB-4029");
       setStaffEmail("pooja.nair@aiims-amr.org");
-      setStaffPass("••••••••••••");
+      setStaffPass("StaffPass@2026");
     }
   };
 
@@ -106,21 +109,31 @@ export const AuthModal: React.FC = () => {
     e.preventDefault();
     setErrorMsg("");
     try {
+      const cleanUser = (adminEmail || adminId).trim();
+      const cleanPass = adminPass.trim();
       if (mode === "signin") {
-        if (adminEmail === "admin.director@aiims-amr.org" && adminPass === "••••••••••••") {
-          loginAsAdmin(adminId, adminEmail);
-        } else {
-          await firebaseSignIn(adminEmail, adminPass);
-        }
+        await firebaseSignIn(cleanUser, cleanPass, "admin");
       } else {
+        // STRICT RBAC: Admin creation is strictly governed and requires Directorate Master Key
+        const validMasterKeys = ["AIIMS-DIR-2026", "ICMR-ADMIN-2026", "DIRECTOR-KEY-2026", "ADMIN@2026"];
+        const keyClean = adminMasterKey.trim().toUpperCase();
+        if (!keyClean) {
+          setErrorMsg("Security Violation: Admin creation requires an authorized Directorate Master Key.");
+          return;
+        }
+        if (!validMasterKeys.includes(keyClean)) {
+          setErrorMsg("Access Denied (403 Forbidden): Invalid Directorate Master Key. Only verified Hospital Directorate executives can provision an Admin account.");
+          return;
+        }
+
         if (!adminName.trim()) {
           setErrorMsg("Please enter Administrator's Name");
           return;
         }
-        await firebaseSignUp(adminEmail, adminPass, {
+        await firebaseSignUp(cleanUser, cleanPass, {
           role: "admin",
           name: adminName,
-          adminId: adminId,
+          adminId: adminId || "ADMIN-ICMR-NCR-8801",
           securityClearance: "Level 4 (Directorate Governance)",
           hospitalName: "AIIMS Apex Antimicrobial Governance Directorate",
         });
@@ -134,22 +147,20 @@ export const AuthModal: React.FC = () => {
     e.preventDefault();
     setErrorMsg("");
     try {
+      const cleanUser = docEmail.trim();
+      const cleanPass = docPassword.trim();
       if (mode === "signin") {
-        if (docEmail === "dr.vance@aiims-amr.org" && docPassword === "••••••••••••") {
-          loginAsDoctor(docEmail, docLicense);
-        } else {
-          await firebaseSignIn(docEmail, docPassword);
-        }
+        await firebaseSignIn(cleanUser, cleanPass, "doctor");
       } else {
         if (!docName.trim()) {
           setErrorMsg("Please enter Doctor's Full Name");
           return;
         }
-        await firebaseSignUp(docEmail, docPassword, {
+        await firebaseSignUp(cleanUser, cleanPass, {
           role: "doctor",
           name: docName.startsWith("Dr.") ? docName : `Dr. ${docName}`,
-          medicalLicenseNo: docLicense,
-          hospitalName: docHospital,
+          medicalLicenseNo: docLicense || "MCI-ND-2016-84920",
+          hospitalName: docHospital || "AIIMS & ICMR AMR Center",
           department: docDept,
           designation: "Attending Consultant / Stewardship Officer",
         });
@@ -163,20 +174,17 @@ export const AuthModal: React.FC = () => {
     e.preventDefault();
     setErrorMsg("");
     try {
+      const cleanUser = (patUhid || patPhone).trim();
+      const cleanPass = patPasscode.trim();
       if (mode === "signin") {
-        if (patUhid === "UHID-2026-P204119" && patPasscode === "••••••") {
-          loginAsPatient(patUhid, patReportCode);
-        } else {
-          const email = `${patUhid.toLowerCase()}@patient-portal.org`;
-          await firebaseSignIn(email, patPasscode);
-        }
+        await firebaseSignIn(cleanUser, cleanPass, "patient");
       } else {
         if (!patName.trim()) {
           setErrorMsg("Please enter Patient's Full Name");
           return;
         }
-        const email = `${patUhid.toLowerCase()}@patient-portal.org`;
-        await firebaseSignUp(email, patPasscode, {
+        const email = `${cleanUser.toLowerCase()}@patient-portal.org`;
+        await firebaseSignUp(email, cleanPass, {
           role: "patient",
           name: patName,
           phone: patPhone,
@@ -195,21 +203,19 @@ export const AuthModal: React.FC = () => {
     e.preventDefault();
     setErrorMsg("");
     try {
+      const cleanUser = (staffEmail || staffId).trim();
+      const cleanPass = staffPass.trim();
       if (mode === "signin") {
-        if (staffEmail === "pooja.nair@aiims-amr.org" && staffPass === "••••••••••••") {
-          loginAsUser(staffId, staffEmail);
-        } else {
-          await firebaseSignIn(staffEmail, staffPass);
-        }
+        await firebaseSignIn(cleanUser, cleanPass, "user");
       } else {
         if (!staffName.trim()) {
           setErrorMsg("Please enter Staff/Technologist Name");
           return;
         }
-        await firebaseSignUp(staffEmail, staffPass, {
+        await firebaseSignUp(cleanUser, cleanPass, {
           role: "user",
           name: staffName,
-          staffId: staffId,
+          staffId: staffId || "STF-LAB-4029",
           staffRole: "Clinical Lab Technologist",
           laboratoryBranch: staffBranch,
         });
@@ -475,6 +481,36 @@ export const AuthModal: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {mode === "signup" && (
+                <div className="space-y-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                  <div className="flex items-start space-x-2 text-amber-700 dark:text-amber-300 text-[11px] leading-tight">
+                    <ShieldAlert className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
+                    <div>
+                      <span className="font-bold block">Hospital Governance Clearance Required</span>
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                        Admin accounts govern all hospital-wide antimicrobial policies & surveillance. Self-registration requires the Directorate Master Key.
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-amber-800 dark:text-amber-300 mb-0.5">
+                      Directorate Master Key (Demo: AIIMS-DIR-2026)
+                    </label>
+                    <div className="relative">
+                      <Key className="w-3.5 h-3.5 text-amber-500 absolute left-2.5 top-2" />
+                      <input
+                        type="password"
+                        required
+                        placeholder="Enter Master Key (e.g. AIIMS-DIR-2026)"
+                        value={adminMasterKey}
+                        onChange={(e) => setAdminMasterKey(e.target.value)}
+                        className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700/60 text-slate-900 dark:text-white font-mono focus:outline-hidden focus:ring-1 focus:ring-amber-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <button
                 type="submit"

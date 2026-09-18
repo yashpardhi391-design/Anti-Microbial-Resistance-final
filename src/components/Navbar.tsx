@@ -123,7 +123,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-[#0B1120]/95 backdrop-blur-md transition-colors duration-200">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-200/70 dark:border-slate-800/60 bg-white/75 dark:bg-[#0B1120]/80 backdrop-blur-xl backdrop-saturate-150 shadow-xs dark:shadow-slate-950/40 transition-all duration-200">
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Brand Logo */}
@@ -132,7 +132,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => handleSelectTab("overview")}
             className="flex items-center space-x-3 cursor-pointer group select-none"
           >
-            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-500/10 border border-teal-500/30 text-teal-600 dark:text-teal-400 group-hover:border-teal-500 transition-all shadow-sm">
+            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-teal-50/80 dark:bg-teal-500/10 border border-teal-500/30 text-teal-600 dark:text-teal-400 group-hover:border-teal-500 backdrop-blur-sm transition-all shadow-sm">
               <Shield className="w-5 h-5 text-teal-600 dark:text-teal-400" />
               <Dna className="w-3 h-3 text-cyan-500 dark:text-cyan-300 absolute" />
             </div>
@@ -141,7 +141,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 dark:text-white">
                   Pharma<span className="text-teal-600 dark:text-teal-400">Resist</span>
                 </span>
-                <span className="text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-teal-100 dark:bg-teal-500/20 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-500/30">
+                <span className="text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-teal-100/80 dark:bg-teal-500/20 text-teal-800 dark:text-teal-300 border border-teal-200/60 dark:border-teal-500/30 backdrop-blur-xs">
                   PRO
                 </span>
               </div>
@@ -151,8 +151,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </div>
 
-          {/* Desktop Navigation Links */}
-          <nav className="hidden lg:flex items-center space-x-1">
+          {/* Desktop Navigation Links with Frosted Glass Capsule */}
+          <nav className="hidden lg:flex items-center space-x-1 p-1 rounded-2xl bg-slate-100/70 dark:bg-slate-900/60 backdrop-blur-lg border border-slate-200/60 dark:border-slate-800/60 shadow-inner">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id || (item.id === "overview" && activeTab === "dashboard");
@@ -161,10 +161,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   key={item.id}
                   id={`nav-link-${item.id}`}
                   onClick={() => handleSelectTab(item.id)}
-                  className={`relative flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  className={`relative flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     isActive
-                      ? "text-teal-800 dark:text-teal-200 bg-teal-50 dark:bg-slate-800 border border-teal-200 dark:border-teal-500/40 shadow-xs"
-                      : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60 border border-transparent"
+                      ? "text-teal-900 dark:text-teal-200 bg-white/90 dark:bg-slate-800/90 border border-teal-500/30 dark:border-teal-500/40 shadow-xs backdrop-blur-sm"
+                      : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-800/50 border border-transparent"
                   }`}
                 >
                   <Icon
@@ -174,12 +174,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                   />
                   <span>{item.label}</span>
                   {"highlightBadge" in item && item.highlightBadge && (
-                    <span className="ml-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30">
+                    <span className="ml-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100/90 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200/70 dark:border-amber-500/30">
                       {item.highlightBadge}
                     </span>
                   )}
                   {item.badge !== undefined && (
-                    <span className="ml-1 text-[11px] font-mono px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-cyan-300">
+                    <span className="ml-1 text-[11px] font-mono px-1.5 py-0.2 rounded-full bg-slate-200/80 dark:bg-slate-700/80 text-slate-700 dark:text-cyan-300">
                       {item.badge}
                     </span>
                   )}
@@ -294,7 +294,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     type="button"
                     onClick={() => logout()}
                     className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-bold border border-rose-200 dark:border-rose-800 transition-all cursor-pointer shadow-2xs"
-                    title="Sign Out & Lock Session (लॉगआउट)"
+                    title="Sign Out & Lock Session"
                   >
                     <LogOut className="w-3.5 h-3.5" />
                     <span className="hidden xl:inline">Sign Out</span>
@@ -471,8 +471,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* Mobile Quick-Tabs Bar */}
-      <div className="lg:hidden border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/90 dark:bg-slate-900/90 px-2 py-1.5 overflow-x-auto scrollbar-none flex items-center space-x-1">
+      {/* Mobile Quick-Tabs Bar with Frosted Glass Effect */}
+      <div className="lg:hidden border-t border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-[#0B1120]/75 backdrop-blur-xl px-2 py-1.5 overflow-x-auto scrollbar-none flex items-center space-x-1">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id || (item.id === "overview" && activeTab === "dashboard");
@@ -480,16 +480,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               key={item.id}
               onClick={() => handleSelectTab(item.id)}
-              className={`shrink-0 flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              className={`shrink-0 flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 isActive
-                  ? "bg-white dark:bg-slate-800 text-teal-800 dark:text-teal-300 border border-teal-300 dark:border-teal-500/40 shadow-xs"
-                  : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
+                  ? "bg-white/90 dark:bg-slate-800/90 text-teal-800 dark:text-teal-300 border border-teal-500/40 dark:border-teal-500/50 shadow-xs backdrop-blur-sm"
+                  : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-800/40"
               }`}
             >
               <Icon className={`w-3.5 h-3.5 ${isActive ? "text-teal-600 dark:text-teal-400" : "text-slate-400"}`} />
               <span className="whitespace-nowrap">{item.label}</span>
               {"highlightBadge" in item && item.highlightBadge && (
-                <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300">
+                <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-amber-100/90 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-500/30">
                   {item.highlightBadge}
                 </span>
               )}
