@@ -4,19 +4,7 @@ import {
   Biohazard,
   Calendar,
 } from "lucide-react";
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
-import { RESISTANCE_TREND_DATA, PATHOGEN_BREAKDOWN } from "../data/mockData";
+import { PATHOGEN_BREAKDOWN } from "../data/mockData";
 
 interface LabAnalyticsViewProps {
   onNavigateToScanner?: () => void;
@@ -118,29 +106,54 @@ export const LabAnalyticsView: React.FC<LabAnalyticsViewProps> = () => {
             CLSI M100-Ed34
           </span>
         </div>
-        <div className="w-full h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={pathogenBarData}
-              margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#94A3B8" opacity={0.25} vertical={false} />
-              <XAxis dataKey="name" stroke="#64748B" fontSize={11} tickLine={false} />
-              <YAxis stroke="#64748B" fontSize={11} tickLine={false} unit="%" domain={[0, 100]} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#0F172A",
-                  borderColor: "#334155",
-                  borderRadius: 12,
-                  fontSize: 12,
-                  color: "#F8FAFC",
-                }}
-              />
-              <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="mdrRate" name="MDR Resistance %" fill="#F43F5E" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="susceptibleRate" name="Wildtype / Susceptible %" fill="#0D9488" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="w-full space-y-4">
+          <div className="flex items-center justify-end space-x-6 text-xs font-medium text-slate-600 dark:text-slate-300 pb-2">
+            <div className="flex items-center space-x-2">
+              <span className="w-3 h-3 rounded-xs bg-rose-500 inline-block" />
+              <span>MDR Resistance %</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="w-3 h-3 rounded-xs bg-teal-600 inline-block" />
+              <span>Wildtype / Susceptible %</span>
+            </div>
+          </div>
+
+          <div className="space-y-3.5">
+            {pathogenBarData.map((item) => (
+              <div key={item.name} className="space-y-1.5 group">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {item.name}
+                    <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500 ml-2">
+                      ({item.isolates.toLocaleString()} isolates)
+                    </span>
+                  </span>
+                  <div className="flex items-center space-x-3 font-mono text-xs">
+                    <span className="text-rose-600 dark:text-rose-400 font-bold">
+                      {item.mdrRate}% MDR
+                    </span>
+                    <span className="text-slate-400">/</span>
+                    <span className="text-teal-600 dark:text-teal-400 font-bold">
+                      {item.susceptibleRate}% Susceptible
+                    </span>
+                  </div>
+                </div>
+
+                <div className="w-full h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex shadow-inner">
+                  <div
+                    style={{ width: `${item.mdrRate}%` }}
+                    className="h-full bg-gradient-to-r from-rose-500 to-rose-600 transition-all duration-300"
+                    title={`MDR: ${item.mdrRate}%`}
+                  />
+                  <div
+                    style={{ width: `${item.susceptibleRate}%` }}
+                    className="h-full bg-gradient-to-r from-teal-500 to-teal-600 transition-all duration-300"
+                    title={`Susceptible: ${item.susceptibleRate}%`}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

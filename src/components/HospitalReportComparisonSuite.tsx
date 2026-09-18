@@ -17,10 +17,11 @@ import {
 } from "lucide-react";
 import { PatientData, ComparativeDrugRow, AnalysisOutput } from "../types";
 import { executeMedicalPrint } from "../utils/printReport";
+import { SAMPLE_PATIENT_RECORDS } from "../data/mockData";
 
 interface HospitalReportComparisonSuiteProps {
-  patient1: PatientData;
-  patient2: PatientData;
+  patient1?: PatientData;
+  patient2?: PatientData;
   comparativeRows?: ComparativeDrugRow[];
   analysis?: AnalysisOutput | null;
   analysisResult?: {
@@ -31,13 +32,15 @@ interface HospitalReportComparisonSuiteProps {
 }
 
 export const HospitalReportComparisonSuite: React.FC<HospitalReportComparisonSuiteProps> = ({
-  patient1,
-  patient2,
+  patient1: propP1,
+  patient2: propP2,
   comparativeRows: propRows,
   analysis: propAnalysis,
   analysisResult,
   onOpenCodeLookup,
 }) => {
+  const patient1 = propP1 || SAMPLE_PATIENT_RECORDS[0];
+  const patient2 = propP2 || SAMPLE_PATIENT_RECORDS[1];
   const comparativeRows = propRows || analysisResult?.rows || [];
   const analysis = propAnalysis !== undefined ? propAnalysis : analysisResult?.analysis || null;
   const [viewMode, setViewMode] = useState<"doctor" | "patient">("doctor");

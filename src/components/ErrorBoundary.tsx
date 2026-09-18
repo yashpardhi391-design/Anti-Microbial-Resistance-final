@@ -29,16 +29,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleResetState = () => {
-    try {
-      localStorage.removeItem("pharma_resist_records");
-    } catch {}
     this.setState({ hasError: false, error: null });
   };
 
   private handleReload = () => {
-    try {
-      localStorage.removeItem("pharma_resist_records");
-    } catch {}
     window.location.reload();
   };
 

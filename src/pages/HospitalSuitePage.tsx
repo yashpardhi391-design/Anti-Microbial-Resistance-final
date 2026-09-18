@@ -5,25 +5,32 @@ import {
   ComparativeDrugRow,
   PatientData,
 } from "../types";
-import { Building2, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Building2, ShieldCheck } from "lucide-react";
 import { Link } from "react-router-dom";
+import { SAMPLE_PATIENT_RECORDS, computeComparativeAnalysis, buildComparativeRows } from "../data/mockData";
 
 export interface HospitalSuitePageProps {
-  currentAnalysisResult: {
+  currentAnalysisResult?: {
     analysis: AnalysisOutput;
     rows: ComparativeDrugRow[];
   };
-  p1: PatientData;
-  p2: PatientData;
-  onOpenCodeLookup: (code?: string) => void;
+  p1?: PatientData;
+  p2?: PatientData;
+  onOpenCodeLookup?: (code?: string) => void;
 }
 
 export const HospitalSuitePage: React.FC<HospitalSuitePageProps> = ({
   currentAnalysisResult,
-  p1,
-  p2,
+  p1: propP1,
+  p2: propP2,
   onOpenCodeLookup,
 }) => {
+  const p1 = propP1 || SAMPLE_PATIENT_RECORDS[0];
+  const p2 = propP2 || SAMPLE_PATIENT_RECORDS[1];
+  const safeAnalysisResult = currentAnalysisResult || {
+    analysis: computeComparativeAnalysis(p1, p2),
+    rows: buildComparativeRows(p1, p2),
+  };
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-in fade-in duration-200">
       {/* Page Header */}
@@ -56,7 +63,7 @@ export const HospitalSuitePage: React.FC<HospitalSuitePageProps> = ({
       <HospitalReportComparisonSuite
         patient1={p1}
         patient2={p2}
-        analysisResult={currentAnalysisResult}
+        analysisResult={safeAnalysisResult}
         onOpenCodeLookup={onOpenCodeLookup}
       />
     </div>
